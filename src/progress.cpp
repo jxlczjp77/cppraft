@@ -4,7 +4,7 @@
 
 namespace raft {
 	const char *ProgressStateTypeStr(ProgressStateType t) {
-		static const char *prstmap[] = { "ProgressStateProbe","ProgressStateReplicate","ProgressStateSnapshot" };
+		static const char *prstmap[] = { "ProgressStateProbe", "ProgressStateReplicate", "ProgressStateSnapshot" };
 		return prstmap[t];
 	}
 
@@ -40,7 +40,7 @@ namespace raft {
 	}
 
 	bool Progress::maybeUpdate(uint64_t n) {
-		bool updated;
+		bool updated = false;
 		if (Match < n) {
 			Match = n;
 			updated = true;
@@ -113,7 +113,7 @@ namespace raft {
 	}
 
 	string Progress::to_string() {
-		return (boost::format("next = %d, match = %d, state = %s, waiting = %v, pendingSnapshot = %d") % Next % Match % State % IsPaused() % PendingSnapshot).str();
+		return (boost::format("next = %1%, match = %2%, state = %3%, waiting = %4%, pendingSnapshot = %5%") % Next % Match % State % IsPaused() % PendingSnapshot).str();
 	}
 
 	inflights::inflights(int s) : size(s), count(0), start(0) {}
@@ -189,4 +189,4 @@ namespace raft {
 		count = 0;
 		start = 0;
 	}
-}
+} // namespace raft

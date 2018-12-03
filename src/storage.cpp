@@ -1,21 +1,19 @@
-﻿#include <raft/storage.hpp>
+﻿#include <raft/Storage.hpp>
 
 namespace raft {
-	memory_storage::memory_storage() : m_entries{ Entry() } {
-
+	MemoryStorage::MemoryStorage() : m_entries{ Entry() } {
 	}
 
-	memory_storage::~memory_storage() {
-
+	MemoryStorage::~MemoryStorage() {
 	}
 
-	error_code memory_storage::initial_state(HardState &hs, ConfState &cs) {
+	ErrorCode MemoryStorage::InitialState(HardState &hs, ConfState &cs) {
 		hs = m_hard_state;
 		cs = m_snapshot.metadata().conf_state();
 		return OK;
 	}
 
-	error_code memory_storage::entries(uint64_t lo, uint64_t hi, uint64_t max_size, vector<Entry> &out) {
+	ErrorCode MemoryStorage::entries(uint64_t lo, uint64_t hi, uint64_t max_size, vector<Entry> &out) {
 		uint64_t offset = m_entries[0].index();
 		if (lo <= offset) {
 			return ErrCompacted;
@@ -36,7 +34,7 @@ namespace raft {
 		return OK;
 	}
 
-	error_code memory_storage::term(uint64_t i, uint64_t &t) {
+	ErrorCode MemoryStorage::term(uint64_t i, uint64_t &t) {
 		t = 0;
 		uint64_t offset = m_entries[0].index();
 		if (i < offset) {
@@ -48,30 +46,30 @@ namespace raft {
 		return OK;
 	}
 
-	error_code memory_storage::last_index(uint64_t &i) {
+	ErrorCode MemoryStorage::last_index(uint64_t &i) {
 		i = lastIndex();
 		return OK;
 	}
 
-	error_code memory_storage::first_index(uint64_t &i) {
+	ErrorCode MemoryStorage::first_index(uint64_t &i) {
 		i = firstIndex();
 		return OK;
 	}
 
-	error_code memory_storage::snapshot(Snapshot **sn) {
+	ErrorCode MemoryStorage::snapshot(Snapshot **sn) {
 		*sn = &m_snapshot;
 		return OK;
 	}
 
-	uint64_t memory_storage::firstIndex() {
+	uint64_t MemoryStorage::firstIndex() {
 		return m_entries[0].index() + 1;
 	}
 
-	uint64_t memory_storage::lastIndex() {
+	uint64_t MemoryStorage::lastIndex() {
 		return m_entries[0].index() + m_entries.size() - 1;
 	}
 
-	error_code memory_storage::append(const vector<Entry> &entries) {
+	ErrorCode MemoryStorage::append(const vector<Entry> &entries) {
 		if (entries.empty()) {
 			return OK;
 		}
@@ -96,7 +94,7 @@ namespace raft {
 		return OK;
 	}
 
-	error_code memory_storage::apply_snapshot(const Snapshot &snapshot) {
+	ErrorCode MemoryStorage::apply_snapshot(const Snapshot &snapshot) {
 		uint64_t old_index = m_snapshot.metadata().index();
 		uint64_t new_index = snapshot.metadata().index();
 		if (new_index < old_index) {
@@ -114,13 +112,13 @@ namespace raft {
 	// Compact discards all log entries prior to compactIndex.
 	// It is the application's responsibility to not attempt to compact an index
 	// greater than raftLog.applied.
-	error_code memory_storage::compact(uint64_t compactIndex) {
+	ErrorCode MemoryStorage::compact(uint64_t compactIndex) {
 		uint64_t offset = m_entries[0].index();
 		if (compactIndex <= offset) {
 			return ErrCompacted;
 		}
 		if (compactIndex > lastIndex()) {
-			fLog(&default_logger::instance(), "compact %d is out of bound lastindex(%d)", compactIndex, lastIndex());
+			fLog(&DefaultLogger::instance(), "compact %1% is out of bound lastindex(%2%)", compactIndex, lastIndex());
 		}
 
 		uint64_t i = compactIndex - offset;
@@ -133,4 +131,4 @@ namespace raft {
 		m_entries.swap(ents);
 		return OK;
 	}
-}
+} // namespace raft

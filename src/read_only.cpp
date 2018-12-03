@@ -2,7 +2,7 @@
 #include <boost/throw_exception.hpp>
 
 namespace raft {
-	readOnly::readOnly(ReadOnlyOption o): option(o) {
+	readOnly::readOnly(ReadOnlyOption o) : option(o) {
 
 	}
 
@@ -10,12 +10,12 @@ namespace raft {
 	// `index` is the commit index of the raft state machine when it received
 	// the read only request.
 	// `m` is the original read only request message from the local or remote node.
-	void readOnly::addRequest(uint64_t index, Message &&m) {
+	void readOnly::addRequest(uint64_t index, const Message &m) {
 		auto ctx = string(m.entries(0).data());
 		if (pendingReadIndex.find(ctx) != pendingReadIndex.end()) {
 			return;
 		}
-		pendingReadIndex[ctx] = new readIndexStatus(index, std::move(m));
+		pendingReadIndex[ctx] = new readIndexStatus(index, m);
 		readIndexQueue.push_back(ctx);
 	}
 

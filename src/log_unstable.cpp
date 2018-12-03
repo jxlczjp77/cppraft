@@ -1,19 +1,15 @@
 ﻿#include "log_unstable.hpp"
-#include <raft/raft.hpp>
+#include <raft/Raft.hpp>
 
 namespace raft {
 	unstable::unstable() : m_snapshot(nullptr) {
-	} 
+	}
 
 	unstable::~unstable() {
 	}
 
 	unstable::unstable(unstable &&u)
-		: m_snapshot(std::move(u.m_snapshot))
-		, m_entries(std::move(u.m_entries))
-		, m_offset(u.m_offset)
-		, m_logger(u.m_logger)
-	{
+		: m_snapshot(std::move(u.m_snapshot)), m_entries(std::move(u.m_entries)), m_offset(u.m_offset), m_logger(u.m_logger) {
 		u.m_offset = 0;
 		u.m_logger = nullptr;
 	}
@@ -84,11 +80,11 @@ namespace raft {
 		if (after == m_offset + uint64_t(m_entries.size())) {
 			m_entries.insert(m_entries.end(), ents.begin(), ents.end());
 		} else if (after <= m_offset) {
-			iLog(m_logger, "replace the unstable entries from index %d", after);
+			iLog(m_logger, "replace the unstable entries from index %1%", after);
 			m_entries = std::move(ents);
 			m_offset = after;
 		} else {
-			iLog(m_logger, "truncate the unstable entries before index %d", after);
+			iLog(m_logger, "truncate the unstable entries before index %1%", after);
 			mustCheckOutOfBounds(m_offset, after);
 			m_entries.erase(m_entries.begin() + (after - m_offset), m_entries.end());
 			m_entries.insert(m_entries.end(), ents.begin(), ents.end());
@@ -102,12 +98,12 @@ namespace raft {
 
 	void unstable::mustCheckOutOfBounds(uint64_t lo, uint64_t hi) {
 		if (lo > hi) {
-			fLog(m_logger, "invalid unstable.slice %d > %d", lo, hi);
+			fLog(m_logger, "invalid unstable.slice %1% > %2%", lo, hi);
 		}
 
 		uint64_t upper = m_offset + uint64_t(m_entries.size());
 		if (lo < m_offset || hi > upper) {
-			fLog(m_logger, "unstable.slice[%d,%d) out of bound [%d,%d]", lo, hi, m_offset, upper);
+			fLog(m_logger, "unstable.slice[%1%,%2%) out of bound [%3%,%4%]", lo, hi, m_offset, upper);
 		}
 	}
-}
+} // namespace raft

@@ -3,9 +3,9 @@
 #include <boost/format.hpp>
 
 namespace raft {
-	raft_log::raft_log(storage *Storage, logger *Logger, uint64_t maxNextEntsSize) {
-		m_storage = Storage;
-		m_logger = Logger;
+	raft_log::raft_log(Storage *storage, Logger *logger, uint64_t maxNextEntsSize) {
+		m_storage = storage;
+		m_logger = logger;
 		m_maxNextEntsSize = maxNextEntsSize;
 		uint64_t firstIndex, lastIndex;
 		if (m_storage->first_index(firstIndex) != OK) {
@@ -15,13 +15,12 @@ namespace raft {
 			abort();
 		}
 		m_unstable.m_offset = lastIndex + 1;
-		m_unstable.m_logger = Logger;
+		m_unstable.m_logger = logger;
 		m_committed = firstIndex - 1;
 		m_applied = firstIndex - 1;
 	}
 
 	raft_log::~raft_log() {
-
 	}
 
 	// maybeAppend returns (0, false) if the entries cannot be appended. Otherwise,
@@ -32,7 +31,7 @@ namespace raft {
 			uint64_t ci = findConflict(ents);
 			if (ci == 0) {
 			} else if (ci <= m_committed) {
-				fLog(m_logger, "entry %llu conflict with committed entry [committed(%llu)]", ci, m_committed);
+				fLog(m_logger, "entry %1% conflict with committed entry [committed(%2%)]", ci, m_committed);
 			} else {
 				uint64_t offset = index + 1;
 				append({ ents.begin() + (ci - offset), ents.end() });
@@ -47,19 +46,18 @@ namespace raft {
 	void raft_log::commitTo(uint64_t tocommit) {
 		if (m_committed < tocommit) {
 			if (lastIndex() < tocommit) {
-				fLog(m_logger, "tocommit(%d) is out of range [lastIndex(%d)]. Was the raft log corrupted, truncated, or lost?", tocommit, lastIndex());
+				fLog(m_logger, "tocommit(%1%) is out of range [lastIndex(%2%)]. Was the raft log corrupted, truncated, or lost?", tocommit, lastIndex());
 			}
 			m_committed = tocommit;
 		}
 	}
-
 
 	void raft_log::appliedTo(uint64_t i) {
 		if (i == 0) {
 			return;
 		}
 		if (m_committed < i || i < m_applied) {
-			fLog(m_logger, "applied(%d) is out of range [prevApplied(%d), committed(%d)]", i, m_applied, m_committed);
+			fLog(m_logger, "applied(%1%) is out of range [prevApplied(%2%), committed(%3%)]", i, m_applied, m_committed);
 		}
 		m_applied = i;
 	}
@@ -74,7 +72,7 @@ namespace raft {
 		}
 		uint64_t after = ents[0].index() - 1;
 		if (after < m_committed) {
-			fLog(m_logger, "after(%d) is out of range [committed(%d)]", after, m_committed);
+			fLog(m_logger, "after(%1%) is out of range [committed(%2%)]", after, m_committed);
 		}
 		m_unstable.truncateAndAppend(ents);
 		return lastIndex();
@@ -88,7 +86,7 @@ namespace raft {
 		return lt == t;
 	}
 
-	error_code raft_log::term(uint64_t i, uint64_t &t) {
+	ErrorCode raft_log::term(uint64_t i, uint64_t &t) {
 		t = 0;
 		uint64_t dummyIndex = firstIndex() - 1;
 		if (i < dummyIndex || i > lastIndex() || m_unstable.maybeTerm(i, t)) {
@@ -129,8 +127,8 @@ namespace raft {
 			if (!matchTerm(i, t)) {
 				if (i <= lastIndex()) {
 					uint64_t dummy;
-					error_code err = term(i, dummy);
-					iLog(m_logger, "found conflict at index %d [existing term: %d, conflicting term: %d]",
+					ErrorCode err = term(i, dummy);
+					iLog(m_logger, "found conflict at index %1% [existing term: %2%, conflicting term: %3%]",
 						i, zeroTermOnErrCompacted(dummy, err), t);
 				}
 				return ne.index();
@@ -139,14 +137,14 @@ namespace raft {
 		return 0;
 	}
 
-	uint64_t raft_log::zeroTermOnErrCompacted(uint64_t t, error_code err) {
+	uint64_t raft_log::zeroTermOnErrCompacted(uint64_t t, ErrorCode err) {
 		if (SUCCESS(err)) {
 			return t;
 		}
 		if (err == ErrCompacted) {
 			return 0;
 		}
-		fLog(m_logger, "unexpected error: %s", error_string(err));
+		fLog(m_logger, "unexpected error: %1%", error_string(err));
 		return 0;
 	}
 
@@ -163,14 +161,14 @@ namespace raft {
 
 	uint64_t raft_log::lastTerm() {
 		uint64_t t;
-		error_code err = term(lastIndex(), t);
+		ErrorCode err = term(lastIndex(), t);
 		if (!SUCCESS(err)) {
-			fLog(m_logger, "unexpected error when getting the last term (%v)", err);
+			fLog(m_logger, "unexpected error when getting the last term (%1%)", err);
 		}
 		return t;
 	}
 
-	error_code raft_log::entries(vector<Entry> &out, uint64_t i, uint64_t maxsize) {
+	ErrorCode raft_log::entries(vector<Entry> &out, uint64_t i, uint64_t maxsize) {
 		out.clear();
 		uint64_t li = lastIndex();
 		if (i > li) {
@@ -180,8 +178,8 @@ namespace raft {
 	}
 
 	// slice returns a slice of log entries from lo through hi-1, inclusive.
-	error_code raft_log::slice(vector<Entry> &out, uint64_t lo, uint64_t hi, uint64_t maxSize) {
-		error_code err = mustCheckOutOfBounds(lo, hi);
+	ErrorCode raft_log::slice(vector<Entry> &out, uint64_t lo, uint64_t hi, uint64_t maxSize) {
+		ErrorCode err = mustCheckOutOfBounds(lo, hi);
 		if (!SUCCESS(err)) {
 			return err;
 		}
@@ -189,11 +187,11 @@ namespace raft {
 			return OK;
 		}
 		if (lo < m_unstable.m_offset) {
-			error_code err = m_storage->entries(lo, min(hi, m_unstable.m_offset), maxSize, out);
+			ErrorCode err = m_storage->entries(lo, min(hi, m_unstable.m_offset), maxSize, out);
 			if (err == ErrCompacted) {
 				return err;
 			} else if (err == ErrUnavailable) {
-				fLog(m_logger, "entries[%d:%d) is unavailable from storage", lo, min(hi, m_unstable.m_offset));
+				fLog(m_logger, "entries[%1%:%2%) is unavailable from storage", lo, min(hi, m_unstable.m_offset));
 			} else if (!SUCCESS(err)) {
 				abort(); // TODO(bdarnell)
 			}
@@ -210,9 +208,9 @@ namespace raft {
 	}
 
 	// l.firstIndex <= lo <= hi <= l.firstIndex + len(l.entries)
-	error_code raft_log::mustCheckOutOfBounds(uint64_t lo, uint64_t hi) {
+	ErrorCode raft_log::mustCheckOutOfBounds(uint64_t lo, uint64_t hi) {
 		if (lo > hi) {
-			fLog(m_logger, "invalid slice %d > %d", lo, hi);
+			fLog(m_logger, "invalid slice %1% > %2%", lo, hi);
 		}
 		uint64_t fi = firstIndex();
 		if (lo < fi) {
@@ -221,7 +219,7 @@ namespace raft {
 
 		uint64_t length = lastIndex() + 1 - fi;
 		if (lo < fi || hi > fi + length) {
-			fLog(m_logger, "slice[%d,%d) out of bound [%d,%d]", lo, hi, fi, lastIndex());
+			fLog(m_logger, "slice[%1%,%2%) out of bound [%3%,%4%]", lo, hi, fi, lastIndex());
 		}
 		return OK;
 	}
@@ -229,7 +227,7 @@ namespace raft {
 	bool raft_log::maybeCommit(uint64_t maxIndex, uint64_t term) {
 		if (maxIndex > m_committed) {
 			uint64_t t;
-			error_code err = this->term(maxIndex, t);
+			ErrorCode err = this->term(maxIndex, t);
 			if (zeroTermOnErrCompacted(t, err) == term) {
 				commitTo(maxIndex);
 				return true;
@@ -254,9 +252,9 @@ namespace raft {
 		vector<Entry> ents;
 		uint64_t off = max(m_applied + 1, firstIndex());
 		if (m_committed + 1 > off) {
-			error_code err = slice(ents, off, m_committed + 1, m_maxNextEntsSize);
+			ErrorCode err = slice(ents, off, m_committed + 1, m_maxNextEntsSize);
 			if (!SUCCESS(err)) {
-				fLog(m_logger, "unexpected error when getting unapplied entries (%v)", err);
+				fLog(m_logger, "unexpected error when getting unapplied entries (%1%)", err);
 			}
 		}
 		return std::move(ents);
@@ -265,7 +263,7 @@ namespace raft {
 	// allEntries returns all entries in the log.
 	vector<Entry> raft_log::allEntries() {
 		vector<Entry> ents;
-		error_code err = entries(ents, firstIndex());
+		ErrorCode err = entries(ents, firstIndex());
 		if (SUCCESS(err)) {
 			return std::move(ents);
 		}
@@ -277,12 +275,20 @@ namespace raft {
 	}
 
 	void raft_log::restore(const Snapshot &s) {
-		iLog(m_logger, "log [%s] starts to restore snapshot [index: %d, term: %d]", to_string().c_str(), s.metadata().index(), s.metadata().index());
+		iLog(m_logger, "log [%1%] starts to restore snapshot [index: %2%, term: %3%]", to_string().c_str(), s.metadata().index(), s.metadata().index());
 		m_committed = s.metadata().index();
 		m_unstable.restore(s);
 	}
 
 	string raft_log::to_string() {
-		return (boost::format("committed=%d, applied=%d, unstable.offset=%d, len(unstable.Entries)=%d") % m_committed % m_applied % m_unstable.m_offset % m_unstable.m_entries.size()).str();
+		return (boost::format("committed=%1%, applied=%2%, unstable.offset=%3%, len(unstable.Entries)=%4%") % m_committed % m_applied % m_unstable.m_offset % m_unstable.m_entries.size()).str();
 	}
-}
+
+	ErrorCode raft_log::snapshot(Snapshot **sn) {
+		if (m_unstable.m_snapshot) {
+			*sn = &*m_unstable.m_snapshot;
+			return OK;
+		}
+		return m_storage->snapshot(sn);
+	}
+} // namespace raft

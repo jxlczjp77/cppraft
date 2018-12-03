@@ -1,7 +1,7 @@
 ﻿#include <boost/test/unit_test.hpp>
 #include "test_common.hpp"
-namespace nraft = raft;
-uint64_t mustTerm(uint64_t term, nraft::error_code err)  {
+
+uint64_t mustTerm(uint64_t term, ErrorCode err) {
 	if (!SUCCESS(err)) {
 		abort();
 	}
@@ -32,8 +32,8 @@ BOOST_AUTO_TEST_CASE(TestFindConflict) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		memory_storage storage;
-		raft_log raftLog(&storage, &default_logger::instance());
+		MemoryStorage storage;
+		raft_log raftLog(&storage, &DefaultLogger::instance());
 		raftLog.append(previousEnts);
 		uint64_t conflict = raftLog.findConflict(tt.ents);
 		BOOST_REQUIRE_EQUAL(conflict, tt.wconflict);
@@ -42,8 +42,8 @@ BOOST_AUTO_TEST_CASE(TestFindConflict) {
 
 BOOST_AUTO_TEST_CASE(TestIsUpToDate) {
 	vector<Entry> previousEnts{ makeEntry(1, 1), makeEntry(2, 2), makeEntry(3, 3) };
-	memory_storage storage;
-	raft_log raftLog(&storage, &default_logger::instance());
+	MemoryStorage storage;
+	raft_log raftLog(&storage, &DefaultLogger::instance());
 	raftLog.append(previousEnts);
 	struct {
 		uint64_t lastIndex;
@@ -87,9 +87,9 @@ BOOST_AUTO_TEST_CASE(TestAppend) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		memory_storage storage;
+		MemoryStorage storage;
 		storage.append(std::move(previousEnts));
-		raft_log raftLog(&storage, &default_logger::instance());
+		raft_log raftLog(&storage, &DefaultLogger::instance());
 		uint64_t index = raftLog.append(tt.ents);
 		BOOST_REQUIRE_EQUAL(index, tt.windex);
 		vector<Entry> ents;
@@ -181,8 +181,8 @@ BOOST_AUTO_TEST_CASE(TestLogMaybeAppend) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		memory_storage storage;
-		raft_log raftLog(&storage, &default_logger::instance());
+		MemoryStorage storage;
+		raft_log raftLog(&storage, &DefaultLogger::instance());
 		raftLog.append(previousEnts);
 		raftLog.m_committed = commit;
 		try {
@@ -209,11 +209,11 @@ BOOST_AUTO_TEST_CASE(TestCompactionSideEffects) {
 	uint64_t lastIndex = 1000;
 	uint64_t unstableIndex = 750;
 	uint64_t lastTerm = lastIndex;
-	memory_storage storage;
+	MemoryStorage storage;
 	for (uint64_t i = 1; i <= unstableIndex; i++) {
 		storage.append({ makeEntry(i, i) });
 	}
-	raft_log raftLog(&storage, &default_logger::instance());
+	raft_log raftLog(&storage, &DefaultLogger::instance());
 	for (uint64_t i = unstableIndex; i < lastIndex; i++) {
 		raftLog.append({ makeEntry(i + 1, i + 1) });
 	}
@@ -262,9 +262,9 @@ BOOST_AUTO_TEST_CASE(TestHasNextEnts) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		memory_storage storage;
+		MemoryStorage storage;
 		storage.apply_snapshot(*snap);
-		raft_log raftLog(&storage, &default_logger::instance());
+		raft_log raftLog(&storage, &DefaultLogger::instance());
 		raftLog.append(ents);
 		raftLog.maybeCommit(5, 1);
 		raftLog.appliedTo(tt.applied);
@@ -286,9 +286,9 @@ BOOST_AUTO_TEST_CASE(TestNextEnts) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		memory_storage storage;
+		MemoryStorage storage;
 		storage.apply_snapshot(*snap);
-		raft_log raftLog(&storage, &default_logger::instance());
+		raft_log raftLog(&storage, &DefaultLogger::instance());
 		raftLog.append(ents);
 		raftLog.maybeCommit(5, 1);
 		raftLog.appliedTo(tt.applied);
@@ -310,9 +310,9 @@ BOOST_AUTO_TEST_CASE(TestUnstableEnts) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		memory_storage storage;
-		storage.append({ previousEnts.begin(), previousEnts.begin() + (tt.unstable-1)});
-		raft_log raftLog(&storage, &default_logger::instance());
+		MemoryStorage storage;
+		storage.append({ previousEnts.begin(), previousEnts.begin() + (tt.unstable - 1) });
+		raft_log raftLog(&storage, &DefaultLogger::instance());
 		raftLog.append({ previousEnts.begin() + (tt.unstable - 1), previousEnts.end() });
 		auto ents = raftLog.unstableEntries();
 		if (!ents.empty()) {
@@ -340,8 +340,8 @@ BOOST_AUTO_TEST_CASE(TestCommitTo) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		try {
-			memory_storage storage;
-			raft_log raftLog(&storage, &default_logger::instance());
+			MemoryStorage storage;
+			raft_log raftLog(&storage, &DefaultLogger::instance());
 			raftLog.append(previousEnts);
 			raftLog.m_committed = commit;
 			raftLog.commitTo(tt.commit);
@@ -365,8 +365,8 @@ BOOST_AUTO_TEST_CASE(TestStableTo) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		memory_storage storage;
-		raft_log raftLog(&storage, &default_logger::instance());
+		MemoryStorage storage;
+		raft_log raftLog(&storage, &DefaultLogger::instance());
 		raftLog.append({ makeEntry(1, 1),makeEntry(2, 2) });
 		raftLog.stableTo(tt.stablei, tt.stablet);
 		BOOST_REQUIRE_EQUAL(raftLog.m_unstable.m_offset, tt.wunstable);
@@ -399,9 +399,9 @@ BOOST_AUTO_TEST_CASE(TestStableToWithSnap) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		memory_storage storage;
+		MemoryStorage storage;
 		storage.apply_snapshot(*makeSnapshot(snapi, snapt));
-		raft_log raftLog(&storage, &default_logger::instance());
+		raft_log raftLog(&storage, &DefaultLogger::instance());
 		raftLog.append(tt.newEnts);
 		raftLog.stableTo(tt.stablei, tt.stablet);
 		BOOST_REQUIRE_EQUAL(raftLog.m_unstable.m_offset, tt.wunstable);
@@ -425,11 +425,11 @@ BOOST_AUTO_TEST_CASE(TestCompaction) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		try {
-			memory_storage storage;
+			MemoryStorage storage;
 			for (uint64_t i = 1; i <= tt.lastIndex; i++) {
 				storage.append({ makeEntry(i, 0) });
 			}
-			raft_log raftLog(&storage, &default_logger::instance());
+			raft_log raftLog(&storage, &DefaultLogger::instance());
 			raftLog.maybeCommit(tt.lastIndex, 0);
 			raftLog.appliedTo(raftLog.m_committed);
 			for (size_t j = 0; j < tt.compact.size(); j++) {
@@ -448,9 +448,9 @@ BOOST_AUTO_TEST_CASE(TestCompaction) {
 
 BOOST_AUTO_TEST_CASE(TestLogRestore) {
 	uint64_t index = 1000, term = 1000;
-	memory_storage storage;
+	MemoryStorage storage;
 	storage.apply_snapshot(*makeSnapshot(index, term));
-	raft_log raftLog(&storage, &default_logger::instance());
+	raft_log raftLog(&storage, &DefaultLogger::instance());
 	BOOST_REQUIRE_EQUAL(raftLog.allEntries().empty(), true);
 	BOOST_REQUIRE_EQUAL(raftLog.firstIndex(), index + 1);
 	BOOST_REQUIRE_EQUAL(raftLog.m_committed, index);
@@ -462,9 +462,9 @@ BOOST_AUTO_TEST_CASE(TestLogRestore) {
 
 BOOST_AUTO_TEST_CASE(TestIsOutOfBounds) {
 	uint64_t offset = 100, num = 100;
-	memory_storage storage;
+	MemoryStorage storage;
 	storage.apply_snapshot(*makeSnapshot(offset, 0));
-	raft_log l(&storage, &default_logger::instance());
+	raft_log l(&storage, &DefaultLogger::instance());
 	for (uint64_t i = 1; i <= num; i++) {
 		l.append({ makeEntry(i + offset, 0) });
 	}
@@ -499,9 +499,9 @@ BOOST_AUTO_TEST_CASE(TestIsOutOfBounds) {
 
 BOOST_AUTO_TEST_CASE(TestTerm) {
 	uint64_t offset = 100, num = 100;
-	memory_storage storage;
+	MemoryStorage storage;
 	storage.apply_snapshot(*makeSnapshot(offset, 1));
-	raft_log l(&storage, &default_logger::instance());
+	raft_log l(&storage, &DefaultLogger::instance());
 	for (uint64_t i = 1; i < num; i++) {
 		l.append({ makeEntry(i + offset, i) });
 	}
@@ -528,9 +528,9 @@ BOOST_AUTO_TEST_CASE(TestTerm) {
 BOOST_AUTO_TEST_CASE(TestTermWithUnstableSnapshot) {
 	uint64_t storagesnapi = 100;
 	uint64_t unstablesnapi = storagesnapi + 5;
-	memory_storage storage;
+	MemoryStorage storage;
 	storage.apply_snapshot(*makeSnapshot(storagesnapi, 1));
-	raft_log l(&storage, &default_logger::instance());
+	raft_log l(&storage, &DefaultLogger::instance());
 	l.restore(*makeSnapshot(unstablesnapi, 1));
 
 	struct {
@@ -559,12 +559,12 @@ BOOST_AUTO_TEST_CASE(TestSlice) {
 	uint64_t last = offset + num;
 	uint64_t half = offset + num / 2;
 	auto halfe = makeEntry(half, half);
-	memory_storage storage;
+	MemoryStorage storage;
 	storage.apply_snapshot(*makeSnapshot(offset, 0));
 	for (uint64_t i = 1; i < num / 2; i++) {
 		storage.append({ makeEntry(offset + i, offset + i) });
 	}
-	raft_log l(&storage, &default_logger::instance());
+	raft_log l(&storage, &DefaultLogger::instance());
 	for (uint64_t i = num / 2; i < num; i++) {
 		l.append({ makeEntry(offset + i, offset + i) });
 	}

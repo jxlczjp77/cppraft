@@ -54,7 +54,7 @@ BOOST_AUTO_TEST_CASE(TestInflightsAdd) {
 
 BOOST_AUTO_TEST_CASE(TestInflightFreeTo) {
 	// no rotating case
-	inflights in{10};
+	inflights in{ 10 };
 	for (uint64_t i = 0; i < 10; i++) {
 		in.add(i);
 	}

@@ -21,7 +21,7 @@ SnapshotPtr makeSnapshot(uint64_t index, uint64_t term) {
 	return sh;
 }
 
-unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, logger &logger) {
+unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, Logger &logger) {
 	unstable u;
 	u.m_snapshot = std::move(snapshot);
 	u.m_entries = std::move(entries);
@@ -38,4 +38,5 @@ void equal_entrys(const vector<Entry> &left, const vector<Entry> &right) {
 		BOOST_REQUIRE_EQUAL(e1.index(), e2.index());
 		BOOST_REQUIRE_EQUAL(e1.term(), e2.term());
 	}
+	auto l = &DefaultLogger::instance();
 }

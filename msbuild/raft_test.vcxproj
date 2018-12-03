@@ -143,6 +143,7 @@
     <ClCompile Include="..\src\log_test.cpp" />
     <ClCompile Include="..\src\log_unstable_test.cpp" />
     <ClCompile Include="..\src\progress_test.cpp" />
+    <ClCompile Include="..\src\raft_test.cpp" />
     <ClCompile Include="..\src\test_common.cpp" />
     <ClCompile Include="..\src\util_test.cpp" />
   </ItemGroup>

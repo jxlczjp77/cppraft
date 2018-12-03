@@ -5,7 +5,7 @@
 namespace raft {
 	using namespace raftpb;
 	using namespace std;
-	class logger;
+	class Logger;
 
 	class unstable {
 		friend class raft_log;
@@ -30,6 +30,6 @@ namespace raft {
 		unique_ptr<Snapshot> m_snapshot;
 		vector<Entry> m_entries;
 		uint64_t m_offset;
-		logger *m_logger;
+		Logger *m_logger;
 	};
 }

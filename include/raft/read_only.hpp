@@ -14,15 +14,15 @@ namespace raft {
 	// RequestCtx
 	struct ReadState {
 		uint64_t Index;
-		vector<uint8_t> RequestCtx;
+		string RequestCtx;
 	};
 
 	struct readIndexStatus {
 		Message req;
 		uint64_t index;
 		map<uint64_t, bool> acks;
-		readIndexStatus(uint64_t idx, Message &&msg)
-			: index(idx), req(std::move(msg)) {
+		readIndexStatus(uint64_t idx, const Message &msg)
+			: index(idx), req(msg) {
 		}
 	};
 
@@ -44,7 +44,7 @@ namespace raft {
 		vector<string> readIndexQueue;
 
 		readOnly(ReadOnlyOption option);
-		void addRequest(uint64_t index, Message &&m);
+		void addRequest(uint64_t index, const Message &m);
 		int recvAck(const Message& msg);
 		void advance(const Message& m, vector<readIndexStatus*> &rss);
 		string lastPendingRequestCtx();

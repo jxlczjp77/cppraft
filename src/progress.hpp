@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <vector>
+#include <memory>
 
 namespace raft {
 	using namespace std;
@@ -78,7 +79,7 @@ namespace raft {
 		// When a leader receives a reply, the previous inflights should
 		// be freed by calling inflights.freeTo with the index of the last
 		// received entry.
-		inflights *ins;
+		std::unique_ptr<inflights> ins;
 
 		// IsLearner is true if this progress is tracked for a learner.
 		bool IsLearner;
