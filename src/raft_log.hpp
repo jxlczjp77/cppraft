@@ -6,7 +6,7 @@
 namespace raft {
 	class raft_log {
 	public:
-		raft_log(Storage *storage, Logger *logger, uint64_t maxNextEntsSize = noLimit);
+		raft_log(StoragePtr storage, Logger *logger, uint64_t maxNextEntsSize = noLimit);
 		~raft_log();
 
 		ErrorCode entries(vector<Entry> &out, uint64_t i, uint64_t maxsize = noLimit);
@@ -36,7 +36,7 @@ namespace raft {
 		ErrorCode snapshot(Snapshot **sn);
 
 	public:
-		Storage *m_storage;
+		StoragePtr m_storage;
 		unstable m_unstable;
 
 		uint64_t m_committed;

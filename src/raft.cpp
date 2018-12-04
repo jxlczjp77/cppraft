@@ -14,7 +14,7 @@ namespace raft {
 	CampaignType campaignElection = "CampaignElection";
 	CampaignType campaignTransfer = "CampaignTransfer";
 
-	MessagePtr make_message(uint64_t to, MessageType type, uint64_t term = 0, bool reject = false) {
+	MessagePtr make_message(uint64_t to, MessageType type = MessageType(0), uint64_t term = 0, bool reject = false) {
 		MessagePtr msg = make_unique<Message>();
 		msg->set_to(to);
 		msg->set_type(type);
@@ -147,6 +147,8 @@ namespace raft {
 		m_preVote = c.PreVote;
 		m_readOnly = std::make_unique<readOnly>(c.ReadOnlyOption);
 		m_disableProposalForwarding = c.DisableProposalForwarding;
+		m_Term = 0;
+		m_Vote = 0;
 		for (auto p : peers) {
 			auto progress = std::make_unique<Progress>();
 			progress->Next = 1;
@@ -167,7 +169,7 @@ namespace raft {
 			}
 		}
 
-		if (isHardStateEqual(hs, HardState{})) {
+		if (!isHardStateEqual(hs, HardState{})) {
 			loadState(hs);
 		}
 		if (c.Applied > 0) {
@@ -244,8 +246,7 @@ namespace raft {
 		// could be expensive.
 		m_pendingConfIndex = m_raftLog->lastIndex();
 
-		std::vector<Entry> emptyEnt;
-		emptyEnt.push_back(Entry());
+		std::vector<Entry> emptyEnt(1);
 		if (!appendEntry(emptyEnt)) {
 			// This won't happen because we just called reset() above.
 			fLog(m_logger, "empty entry was dropped");
@@ -254,8 +255,6 @@ namespace raft {
 		// uncommitted log quota. This is because we want to preserve the
 		// behavior of allowing one entry larger than quota if the current
 		// usage is zero.
-		emptyEnt.clear();
-		emptyEnt.push_back(Entry());
 		reduceUncommittedSize(emptyEnt);
 		iLog(m_logger, "%1% became leader at term %2%", m_id, m_Term);
 	}
@@ -366,14 +365,15 @@ namespace raft {
 				break;
 			auto gr = r->poll(m.from(), m.type(), !m.reject());
 			iLog(r->m_logger, "%1% [quorum:%2%] has received %3% %4% votes and %5% vote rejections", r->m_id, r->quorum(), gr, m.type(), r->m_votes.size() - gr);
-			if (r->quorum() == gr) {
+			int quorum = r->quorum();
+			if (quorum == gr) {
 				if (r->m_state == StatePreCandidate) {
 					r->campaign(campaignElection);
 				} else {
 					r->becomeLeader();
 					r->bcastAppend();
 				}
-			} else if (r->m_votes.size() - gr) {
+			} else if (quorum == r->m_votes.size() - gr) {
 				// pb.MsgPreVoteResp contains future term of pre-candidate
 				// m.Term > r.Term; reuse r.Term
 				r->becomeFollower(r->m_Term, None);
@@ -437,8 +437,7 @@ namespace raft {
 			}
 			std::vector<Entry> ents;
 			ents.reserve(m.entries_size());
-			for (int i = 0; i < m.entries_size(); i++)
-				ents.push_back(m.entries(i));
+			std::copy(m.entries().begin(), m.entries().end(), std::back_inserter(ents));
 			if (!r->appendEntry(ents)) {
 				return ErrProposalDropped;
 			}
@@ -680,8 +679,7 @@ namespace raft {
 		// Handle the message term, which may result in our stepping down to a follower.
 		if (m.term() == 0) {
 			// local message
-		}
-		if (m.term() > m_Term) {
+		} else if (m.term() > m_Term) {
 			if (m.type() == MsgVote || m.type() == MsgPreVote) {
 				bool force = (m.context() == campaignTransfer);
 				bool inLease = m_checkQuorum && m_lead != None && m_electionElapsed < m_electionTimeout;
@@ -895,7 +893,7 @@ namespace raft {
 			if (t == campaignTransfer) {
 				ctx = t;
 			}
-			MessagePtr msg = make_message(m_id, voteMsg, term);
+			MessagePtr msg = make_message(it->first, voteMsg, term);
 			msg->set_index(m_raftLog->lastIndex());
 			msg->set_logterm(m_raftLog->lastTerm());
 			msg->set_context(ctx);
@@ -913,7 +911,7 @@ namespace raft {
 			iLog(m_logger, "%1% received %2% rejection from %3% at term %4%", m_id, t, id, m_Term);
 		}
 		auto it = m_votes.find(id);
-		if (it != m_votes.end()) {
+		if (it == m_votes.end()) {
 			m_votes[id] = v;
 		}
 		for (auto it = m_votes.begin(); it != m_votes.end(); ++it) {
@@ -1295,7 +1293,7 @@ namespace raft {
 		if (pr->IsPaused()) {
 			return false;
 		}
-		auto m = make_message(to, MsgSnap);
+		auto m = make_message(to);
 
 		uint64_t term;
 		std::vector<Entry> ents;
@@ -1335,8 +1333,7 @@ namespace raft {
 			m->set_index(pr->Next - 1);
 			m->set_logterm(term);
 			auto ents_ = m->mutable_entries();
-			for (auto &ent : ents)
-				*ents_->Add() = ent;
+			for (auto &ent : ents) *ents_->Add() = ent;
 			m->set_commit(m_raftLog->m_committed);
 			if (!ents.empty()) {
 				switch (pr->State) {
@@ -1418,5 +1415,63 @@ namespace raft {
 		}
 		std::sort(nodes.begin(), nodes.end());
 		return std::move(nodes);
+	}
+
+	void Raft::addNode(uint64_t id) {
+		addNodeOrLearnerNode(id, false);
+	}
+
+
+	void Raft::addNodeOrLearnerNode(uint64_t id, bool isLearner) {
+		auto pr = getProgress(id);
+		if (!pr) {
+			setProgress(id, 0, m_raftLog->lastIndex() + 1, isLearner);
+		} else {
+			if (isLearner && !pr->IsLearner) {
+				// can only change Learner to Voter
+				iLog(m_logger, "%1% ignored addLearner: do not support changing %2% from raft peer to learner.", m_id, id);
+				return;
+			}
+
+			if (isLearner == pr->IsLearner) {
+				// Ignore any redundant addNode calls (which can happen because the
+				// initial bootstrapping entries are applied twice).
+				return;
+			}
+
+			// change Learner to Voter, use origin Learner progress
+			pr->IsLearner = false;
+			m_prs[id] = std::move(m_learnerPrs[id]);
+			m_learnerPrs.erase(id);
+		}
+
+		if (m_id == id) {
+			m_isLearner = isLearner;
+		}
+
+		// When a node is first added, we should mark it as recently active.
+		// Otherwise, CheckQuorum may cause us to step down if it is invoked
+		// before the added node has a chance to communicate with us.
+		pr = getProgress(id);
+		pr->RecentActive = true;
+	}
+
+	void Raft::removeNode(uint64_t id) {
+		delProgress(id);
+
+		// do not try to commit or abort transferring if there is no nodes in the cluster.
+		if (m_prs.empty() && m_learnerPrs.empty()) {
+			return;
+		}
+
+		// The quorum size is now smaller, so see if any pending entries can
+		// be committed.
+		if (maybeCommit()) {
+			bcastAppend();
+		}
+		// If the removed node is the leadTransferee, then abort the leadership transferring.
+		if (m_state == StateLeader && m_leadTransferee == id) {
+			abortLeaderTransfer();
+		}
 	}
 } // namespace raft

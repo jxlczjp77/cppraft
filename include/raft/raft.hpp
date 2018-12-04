@@ -5,6 +5,7 @@
 #include <raft/read_only.hpp>
 #include <raft/logger.hpp>
 #include <map>
+#include <memory>
 
 namespace raft {
 	using namespace std;
@@ -18,6 +19,7 @@ namespace raft {
 	const uint64_t noLimit = std::numeric_limits<uint64_t>().max();
 	typedef std::unique_ptr<Message> MessagePtr;
 	typedef std::unique_ptr<Progress> ProgressPtr;
+	typedef std::shared_ptr<Storage> StoragePtr;
 
 	enum ErrorCode {
 		OK = 0,
@@ -64,7 +66,7 @@ namespace raft {
 		// stored in storage. raft reads the persisted entries and states out of
 		// Storage when it needs. raft reads out the previous state and configuration
 		// out of storage when restarting.
-		Storage *Storage;
+		StoragePtr Storage;
 		// Applied is the last applied index. It should only be set when restarting
 		// raft. raft will not return entries to the application smaller or equal to
 		// Applied. If Applied is unset when restarting, raft might return previous
@@ -156,7 +158,7 @@ namespace raft {
 	ErrorCode stepLeader(Raft *r, Message &m);
 	typedef ErrorCode(*stepFunc)(class Raft *, Message &);
 
-	class Raft {
+	class Raft : public boost::noncopyable {
 	public:
 		uint64_t m_id;
 
@@ -259,19 +261,22 @@ namespace raft {
 		void abortLeaderTransfer();
 		vector<uint64_t> nodes();
 		vector<uint64_t> learnerNodes();
+		void reduceUncommittedSize(const vector<Entry> &ents);
+		void reset(uint64_t term);
+		void addNode(uint64_t id);
+		void removeNode(uint64_t id);
 
 	private:
 		bool pastElectionTimeout();
-		void reset(uint64_t term);
 		void resetRandomizedElectionTimeout();
 		bool increaseUncommittedSize(const vector<Entry> &ents);
 		void forEachProgress(const std::function<void(uint64_t id, Progress *pr)> &f);
-		void reduceUncommittedSize(const vector<Entry> &ents);
 		bool restore(const Snapshot &s);
 		void restoreNode(vector<uint64_t> &nodes, bool isLearner);
 		void setProgress(uint64_t id, uint64_t match, uint64_t next, bool isLearner);
 		void delProgress(uint64_t id);
 		void sendHeartbeat(uint64_t to, const string &ctx);
 		void loadState(const HardState &state);
+		void addNodeOrLearnerNode(uint64_t id, bool isLearner);
 	};
 }

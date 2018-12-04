@@ -3,7 +3,7 @@
 #include <boost/format.hpp>
 
 namespace raft {
-	raft_log::raft_log(Storage *storage, Logger *logger, uint64_t maxNextEntsSize) {
+	raft_log::raft_log(StoragePtr storage, Logger *logger, uint64_t maxNextEntsSize) {
 		m_storage = storage;
 		m_logger = logger;
 		m_maxNextEntsSize = maxNextEntsSize;

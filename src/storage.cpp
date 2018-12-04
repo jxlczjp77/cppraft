@@ -131,4 +131,10 @@ namespace raft {
 		m_entries.swap(ents);
 		return OK;
 	}
+
+	// SetHardState saves the current HardState.
+	ErrorCode MemoryStorage::SetHardState(const HardState &st) {
+		m_hard_state = st;
+		return OK;
+	}
 } // namespace raft

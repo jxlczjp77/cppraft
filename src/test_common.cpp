@@ -7,10 +7,11 @@ struct doexit {
 	}
 } t;
 
-Entry makeEntry(uint64_t index, uint64_t term) {
+Entry makeEntry(uint64_t index, uint64_t term, string &&data) {
 	Entry tmp;
 	tmp.set_index(index);
 	tmp.set_term(term);
+	tmp.set_data(std::move(data));
 	return tmp;
 }
 

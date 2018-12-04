@@ -9,7 +9,7 @@ using namespace std;
 
 typedef std::unique_ptr<Snapshot> SnapshotPtr;
 
-Entry makeEntry(uint64_t index, uint64_t term);
+Entry makeEntry(uint64_t index, uint64_t term, string &&data = string());
 SnapshotPtr makeSnapshot(uint64_t index, uint64_t term);
 void equal_entrys(const vector<Entry> &left, const vector<Entry> &right);
 unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, Logger &logger);

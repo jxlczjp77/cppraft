@@ -13,6 +13,7 @@ namespace raft {
 		virtual ErrorCode first_index(uint64_t &i) = 0;
 		virtual ErrorCode snapshot(Snapshot **sn) = 0;
 	};
+	typedef std::shared_ptr<Storage> StoragePtr;
 
 	class MemoryStorage : public Storage {
 	public:
@@ -29,6 +30,7 @@ namespace raft {
 		ErrorCode append(const vector<Entry> &entries);
 		ErrorCode apply_snapshot(const Snapshot &snapshot);
 		ErrorCode compact(uint64_t compactIndex);
+		ErrorCode SetHardState(const HardState &st);
 
 	private:
 		uint64_t firstIndex();
