@@ -156,7 +156,7 @@ namespace raft {
 	ErrorCode stepFollower(Raft *r, Message &m);
 	ErrorCode stepCandidate(Raft *r, Message &m);
 	ErrorCode stepLeader(Raft *r, Message &m);
-	typedef ErrorCode(*stepFunc)(class Raft *, Message &);
+	typedef std::function<ErrorCode(Raft *, Message &)> stepFunc;
 
 	class Raft : public boost::noncopyable {
 	public:
@@ -265,18 +265,20 @@ namespace raft {
 		void reset(uint64_t term);
 		void addNode(uint64_t id);
 		void removeNode(uint64_t id);
+		void setProgress(uint64_t id, uint64_t match, uint64_t next, bool isLearner);
+		void resetRandomizedElectionTimeout();
+		bool pastElectionTimeout();
+		void delProgress(uint64_t id);
 
 	private:
-		bool pastElectionTimeout();
-		void resetRandomizedElectionTimeout();
 		bool increaseUncommittedSize(const vector<Entry> &ents);
 		void forEachProgress(const std::function<void(uint64_t id, Progress *pr)> &f);
 		bool restore(const Snapshot &s);
 		void restoreNode(vector<uint64_t> &nodes, bool isLearner);
-		void setProgress(uint64_t id, uint64_t match, uint64_t next, bool isLearner);
-		void delProgress(uint64_t id);
 		void sendHeartbeat(uint64_t to, const string &ctx);
 		void loadState(const HardState &state);
 		void addNodeOrLearnerNode(uint64_t id, bool isLearner);
 	};
+
+	MessageType voteRespMsgType(MessageType msgt);
 }

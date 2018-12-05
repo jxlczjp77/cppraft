@@ -308,7 +308,8 @@ BOOST_AUTO_TEST_CASE(TestUnstableEnts) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->append({ previousEnts.begin(), previousEnts.begin() + (tt.unstable - 1) });
+		vector<Entry> ee{ previousEnts.begin(), (previousEnts.begin() + (tt.unstable - 1)) };
+		storage->append(ee);
 		raft_log raftLog(storage, &DefaultLogger::instance());
 		raftLog.append({ previousEnts.begin() + (tt.unstable - 1), previousEnts.end() });
 		auto ents = raftLog.unstableEntries();

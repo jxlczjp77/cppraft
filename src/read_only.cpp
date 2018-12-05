@@ -15,7 +15,7 @@ namespace raft {
 		if (pendingReadIndex.find(ctx) != pendingReadIndex.end()) {
 			return;
 		}
-		pendingReadIndex[ctx] = new readIndexStatus(index, m);
+		pendingReadIndex[ctx] = std::make_unique<readIndexStatus>(index, m);
 		readIndexQueue.push_back(ctx);
 	}
 
@@ -28,7 +28,7 @@ namespace raft {
 			return 0;
 		}
 
-		readIndexStatus* rs = iter->second;
+		readIndexStatusPtr &rs = iter->second;
 		rs->acks[msg.from()] = true;
 		return int(rs->acks.size() + 1);
 	}
@@ -36,7 +36,7 @@ namespace raft {
 	// advance advances the read only request queue kept by the readonly struct.
 	// It dequeues the requests until it finds the read only request that has
 	// the same context as the given `m`.
-	void readOnly::advance(const Message& m, vector<readIndexStatus*> &rss) {
+	void readOnly::advance(const Message& m, vector<readIndexStatusPtr> &rss) {
 		int i = 0;
 		bool found;
 
@@ -47,7 +47,7 @@ namespace raft {
 			if (it == pendingReadIndex.end()) {
 				BOOST_THROW_EXCEPTION(std::runtime_error("cannot find corresponding read state from pending map"));
 			}
-			rss.push_back(it->second);
+			rss.emplace_back(std::move(it->second));
 			if (okctx == ctx) {
 				found = true;
 				break;
@@ -56,7 +56,7 @@ namespace raft {
 
 		if (found) {
 			readIndexQueue.erase(readIndexQueue.begin(), readIndexQueue.begin() + i);
-			for (auto rs : rss) {
+			for (auto &rs : rss) {
 				pendingReadIndex.erase(rs->req.entries(0).data());
 			}
 		}

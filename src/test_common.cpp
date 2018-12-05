@@ -1,5 +1,6 @@
 ﻿#include "test_common.hpp"
 #include <boost/test/unit_test.hpp>
+#include <boost/format.hpp>
 
 struct doexit {
 	~doexit() {
@@ -41,3 +42,24 @@ void equal_entrys(const vector<Entry> &left, const vector<Entry> &right) {
 	}
 	auto l = &DefaultLogger::instance();
 }
+
+string ltoa(raft_log *l) {
+	auto s = (boost::format("committed: %d\n") % l->m_committed).str();
+	s += (boost::format("applied:  %d\n") % l->m_applied).str();
+	auto ents = l->allEntries();
+	for (size_t i = 0; i < ents.size(); i++) {
+		auto &e = ents[i];
+		auto r = (boost::format("data:%1%, index:%2%, term:%3%, type:%4%") % e.data() % e.index() % e.term() % e.type()).str();
+		s += (boost::format("#%d: %s\n") % i % r).str();
+	}
+	return s;
+}
+
+
+string diffu(const string &a, const string &b) {
+	if (a == b) {
+		return "";
+	}
+	return "diff: \n" + a + "\n" + b + "\n";
+}
+

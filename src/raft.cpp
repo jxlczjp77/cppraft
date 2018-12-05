@@ -3,6 +3,8 @@
 #include <boost/format.hpp>
 #include <boost/random.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/uniform_int_distribution.hpp>
 
 #include "raft_log.hpp"
 #include "progress.hpp"
@@ -567,9 +569,9 @@ namespace raft {
 				return OK;
 			}
 
-			std::vector<readIndexStatus *> rss;
+			std::vector<readIndexStatusPtr> rss;
 			r->m_readOnly->advance(m, rss);
-			for (auto rs : rss) {
+			for (auto &rs : rss) {
 				auto &req = rs->req;
 				if (req.from() == None || req.from() == r->m_id) { // from local member
 					r->m_readStates.push_back(ReadState{ rs->index, req.entries(0).data() });
@@ -948,12 +950,10 @@ namespace raft {
 		m_uncommittedSize = 0;
 		m_readOnly.reset(new readOnly(m_readOnly->option));
 	}
-
+	boost::mt19937 gen;
 	void Raft::resetRandomizedElectionTimeout() {
-		boost::minstd_rand generator((int)time(0));
-		boost::uniform_int<> uni_dist(0, m_electionTimeout);
-		boost::variate_generator<boost::minstd_rand, boost::uniform_int<>> uni(generator, uni_dist);
-		m_randomizedElectionTimeout = m_electionTimeout + uni();
+		boost::random::uniform_int_distribution<> dist(0, m_electionTimeout - 1);
+		m_randomizedElectionTimeout = m_electionTimeout + dist(gen);
 	}
 
 	void Raft::abortLeaderTransfer() {

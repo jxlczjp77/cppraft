@@ -25,6 +25,7 @@ namespace raft {
 			: index(idx), req(msg) {
 		}
 	};
+	typedef std::unique_ptr<readIndexStatus> readIndexStatusPtr;
 
 	enum ReadOnlyOption {
 		// ReadOnlySafe guarantees the linearizability of the read only request by
@@ -40,13 +41,13 @@ namespace raft {
 
 	struct readOnly {
 		ReadOnlyOption option;
-		map<string, readIndexStatus*> pendingReadIndex;
+		map<string, readIndexStatusPtr> pendingReadIndex;
 		vector<string> readIndexQueue;
 
 		readOnly(ReadOnlyOption option);
 		void addRequest(uint64_t index, const Message &m);
 		int recvAck(const Message& msg);
-		void advance(const Message& m, vector<readIndexStatus*> &rss);
+		void advance(const Message& m, vector<readIndexStatusPtr> &rss);
 		string lastPendingRequestCtx();
 	};
 }
