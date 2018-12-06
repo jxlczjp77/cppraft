@@ -1,13 +1,6 @@
 ﻿#include <boost/test/unit_test.hpp>
 #include "test_common.hpp"
 
-uint64_t mustTerm(uint64_t term, ErrorCode err) {
-	if (!SUCCESS(err)) {
-		abort();
-	}
-	return term;
-}
-
 BOOST_AUTO_TEST_CASE(TestFindConflict) {
 	vector<Entry> previousEnts{ makeEntry(1, 1), makeEntry(2, 2), makeEntry(3, 3) };
 	struct {
@@ -219,7 +212,7 @@ BOOST_AUTO_TEST_CASE(TestCompactionSideEffects) {
 	BOOST_REQUIRE_EQUAL(ok, true);
 	raftLog.appliedTo(raftLog.m_committed);
 	uint64_t offset = 500;
-	storage->compact(offset);
+	storage->Compact(offset);
 	BOOST_REQUIRE_EQUAL(raftLog.lastIndex(), lastIndex);
 	for (uint64_t j = offset; j <= raftLog.lastIndex(); j++) {
 		uint64_t t;
@@ -429,7 +422,7 @@ BOOST_AUTO_TEST_CASE(TestCompaction) {
 			raftLog.maybeCommit(tt.lastIndex, 0);
 			raftLog.appliedTo(raftLog.m_committed);
 			for (size_t j = 0; j < tt.compact.size(); j++) {
-				auto err = storage->compact(tt.compact[j]);
+				auto err = storage->Compact(tt.compact[j]);
 				if (!SUCCESS(err)) {
 					BOOST_REQUIRE_EQUAL(tt.wallow, false);
 					continue;

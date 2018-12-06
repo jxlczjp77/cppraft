@@ -29,7 +29,8 @@ namespace raft {
 
 		ErrorCode append(const vector<Entry> &entries);
 		ErrorCode apply_snapshot(const Snapshot &snapshot);
-		ErrorCode compact(uint64_t compactIndex);
+		ErrorCode CreateSnapshot(uint64_t i, const ConfState *cs, const string &data, Snapshot &sh);
+		ErrorCode Compact(uint64_t compactIndex);
 		ErrorCode SetHardState(const HardState &st);
 
 	private:

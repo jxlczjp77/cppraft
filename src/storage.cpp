@@ -109,10 +109,35 @@ namespace raft {
 		return OK;
 	}
 
+	// CreateSnapshot makes a snapshot which can be retrieved with Snapshot() and
+// can be used to reconstruct the state at that point.
+// If any configuration changes have been made since the last compaction,
+// the result of the last ApplyConfChange must be passed in.
+	ErrorCode MemoryStorage::CreateSnapshot(uint64_t i, const ConfState *cs, const string &data, Snapshot &sh) {
+		if (i <= m_snapshot.metadata().index()) {
+			sh.Clear();
+			return ErrSnapOutOfDate;
+		}
+
+		auto offset = m_entries[0].index();
+		if (i > lastIndex()) {
+			fLog(&DefaultLogger::instance(), "snapshot %1% is out of bound lastindex(%2%)", i, lastIndex());
+		}
+
+		m_snapshot.mutable_metadata()->set_index(i);
+		m_snapshot.mutable_metadata()->set_term(m_entries[i - offset].term());
+		if (cs != nullptr) {
+			*m_snapshot.mutable_metadata()->mutable_conf_state() = *cs;
+		}
+		m_snapshot.set_data(data);
+		return OK;
+	}
+
+
 	// Compact discards all log entries prior to compactIndex.
 	// It is the application's responsibility to not attempt to compact an index
 	// greater than raftLog.applied.
-	ErrorCode MemoryStorage::compact(uint64_t compactIndex) {
+	ErrorCode MemoryStorage::Compact(uint64_t compactIndex) {
 		uint64_t offset = m_entries[0].index();
 		if (compactIndex <= offset) {
 			return ErrCompacted;

@@ -264,16 +264,17 @@ namespace raft {
 		void reduceUncommittedSize(const vector<Entry> &ents);
 		void reset(uint64_t term);
 		void addNode(uint64_t id);
+		void addLearner(uint64_t id);
 		void removeNode(uint64_t id);
 		void setProgress(uint64_t id, uint64_t match, uint64_t next, bool isLearner);
 		void resetRandomizedElectionTimeout();
 		bool pastElectionTimeout();
 		void delProgress(uint64_t id);
+		bool restore(const Snapshot &s);
 
 	private:
 		bool increaseUncommittedSize(const vector<Entry> &ents);
 		void forEachProgress(const std::function<void(uint64_t id, Progress *pr)> &f);
-		bool restore(const Snapshot &s);
 		void restoreNode(vector<uint64_t> &nodes, bool isLearner);
 		void sendHeartbeat(uint64_t to, const string &ctx);
 		void loadState(const HardState &state);

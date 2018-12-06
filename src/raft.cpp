@@ -263,7 +263,7 @@ namespace raft {
 
 	ErrorCode stepFollower(Raft *r, Message &m) {
 		switch (m.type()) {
-		case MsgProp:
+		case MsgProp: {
 			if (r->m_lead == None) {
 				iLog(r->m_logger, "%1% no leader at term %2%; dropping proposal", r->m_id, r->m_Term);
 				return ErrProposalDropped;
@@ -274,21 +274,26 @@ namespace raft {
 			m.set_to(r->m_lead);
 			r->send(std::make_unique<Message>(m));
 			break;
-		case MsgApp:
+		}
+		case MsgApp: {
 			r->m_electionElapsed = 0;
 			r->m_lead = m.from();
 			r->handleAppendEntries(m);
 			break;
-		case MsgHeartbeat:
+		}
+		case MsgHeartbeat: {
 			r->m_electionElapsed = 0;
 			r->m_lead = m.from();
 			r->handleHeartbeat(m);
 			break;
-		case MsgSnap:
+		}
+		case MsgSnap: {
 			r->m_electionElapsed = 0;
 			r->m_lead = m.from();
 			r->handleSnapshot(m);
-		case MsgTransferLeader:
+			break;
+		}
+		case MsgTransferLeader: {
 			if (r->m_lead == None) {
 				iLog(r->m_logger, "%1% no leader at term %2%; dropping leader transfer msg", r->m_id, r->m_Term);
 				return OK;
@@ -296,7 +301,8 @@ namespace raft {
 			m.set_to(r->m_lead);
 			r->send(std::make_unique<Message>(m));
 			break;
-		case MsgTimeoutNow:
+		}
+		case MsgTimeoutNow: {
 			if (r->promotable()) {
 				iLog(r->m_logger, "%1% [term %2%] received MsgTimeoutNow from %3% and starts an election to get leadership.", r->m_id, r->m_Term, m.from());
 				// Leadership transfers never use pre-vote even if r.preVote is true; we
@@ -307,7 +313,8 @@ namespace raft {
 				iLog(r->m_logger, "%1% received MsgTimeoutNow from %2% but is not promotable", r->m_id, m.from());
 			}
 			break;
-		case MsgReadIndex:
+		}
+		case MsgReadIndex: {
 			if (r->m_lead == None) {
 				iLog(r->m_logger, "%1% no leader at term %2%; dropping index reading msg", r->m_id, r->m_Term);
 				return OK;
@@ -315,12 +322,15 @@ namespace raft {
 			m.set_to(r->m_lead);
 			r->send(std::make_unique<Message>(m));
 			break;
-		case MsgReadIndexResp:
+		}
+		case MsgReadIndexResp: {
 			if (m.entries().size() != 1) {
 				eLog(r->m_logger, "%1% invalid format of MsgReadIndexResp from %2%, entries count: %3%", r->m_id, m.from(), m.entries().size());
 				return OK;
 			}
 			r->m_readStates.push_back(ReadState{ m.index(), m.entries(0).data() });
+			break;
+		}
 		}
 		return OK;
 	}
@@ -615,7 +625,6 @@ namespace raft {
 		}
 		case MsgTransferLeader:
 		{
-
 			if (pr->IsLearner) {
 				dLog(r->m_logger, "%1% is learner. Ignored transferring leadership", r->m_id);
 				return OK;
@@ -1421,6 +1430,10 @@ namespace raft {
 		addNodeOrLearnerNode(id, false);
 	}
 
+
+	void Raft::addLearner(uint64_t id) {
+		addNodeOrLearnerNode(id, true);
+	}
 
 	void Raft::addNodeOrLearnerNode(uint64_t id, bool isLearner) {
 		auto pr = getProgress(id);

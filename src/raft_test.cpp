@@ -1,12 +1,13 @@
 ﻿#include <boost/test/unit_test.hpp>
 #include "test_common.hpp"
-#include <progress.hpp>
 #include <boost/throw_exception.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/random/linear_congruential.hpp>
 #include <boost/random/uniform_real.hpp>
 #include <boost/random/variate_generator.hpp>
 #include <boost/format.hpp>
+#define DISABLE_RAFT_TEST
+
 using namespace raft;
 using namespace raftpb;
 typedef boost::minstd_rand base_generator_type;
@@ -16,19 +17,6 @@ typedef std::unique_ptr<inflights> InflightsPtr;
 typedef std::unique_ptr<Raft> RaftPtr;
 
 void preVoteConfig(Config &c);
-
-MessagePtr make_message(uint64_t from, uint64_t to, MessageType type, uint64_t index = 0, uint64_t term = 0, bool reject = false, vector<Entry> &&ents = vector<Entry>()) {
-	MessagePtr msg = make_unique<Message>();
-	msg->set_from(from);
-	msg->set_to(to);
-	msg->set_type(type);
-	msg->set_term(term);
-	msg->set_reject(reject);
-	msg->set_index(index);
-	auto dd = msg->mutable_entries();
-	for (auto &ent : ents) *dd->Add() = ent;
-	return std::move(msg);
-}
 
 vector<MessagePtr> msg_move(initializer_list<MessagePtr> msg) {
 	vector<MessagePtr> tmp;
@@ -69,57 +57,11 @@ int PayloadSize(const Entry &e) {
 	return int(e.data().size());
 }
 
-struct stateMachine {
-	virtual ErrorCode Step(Message &m) = 0;
-	virtual vector<MessagePtr> readMessages() = 0;
-};
-typedef std::shared_ptr<stateMachine> stateMachinePtr;
-typedef std::unique_ptr<MemoryStorage> MemoryStoragePtr;
-
-struct connem {
-	uint64_t from, to;
-	friend bool operator<(const connem &l, const connem &r) { 
-		return (l.from < r.from) || (l.from == r.from && l.to < r.to);
-	}
-};
-
-struct blackHole : stateMachine {
-	ErrorCode Step(Message &m) { return OK; }
-	vector<MessagePtr> readMessages() { return {}; }
-};
-
 stateMachinePtr nopStepper = std::make_unique<blackHole>();
 
-struct testRaft : public stateMachine, public Raft {
-	testRaft(Config &c): Raft(c) {}
-	ErrorCode Step(Message &m) { return Raft::Step(m); }
-	vector<MessagePtr> readMessages() { return std::move(Raft::m_msgs); }
-};
-typedef std::shared_ptr<testRaft> TestRaftPtr;
-vector<Entry> nextEnts(testRaft *r, Storage *s);
-
-struct network {
-	map<uint64_t, stateMachinePtr> peers;
-	map<uint64_t, StoragePtr> storage;
-	map<connem, double> dropm;
-	map<MessageType, bool> ignorem;
-
-	// msgHook is called for each message sent. It may inspect the
-	// message and return true to send it or false to drop it.
-	bool (*msgHook)(const Message &m);
-
-	void send(MessagePtr &&msg);
-	void send(list<MessagePtr> &msgs);
-	void drop(uint64_t from, uint64_t to, double perc);
-	void cut(uint64_t one, uint64_t other);
-	void isolate(uint64_t id);
-	void ignore(MessageType t);
-	void recover();
-	vector<MessagePtr> filter(vector<MessagePtr> &&msgs);
-};
-typedef std::unique_ptr<network> networkptr;
 networkptr newNetworkWithConfig(void(*configFunc)(Config &), const vector<stateMachinePtr> &peers);
 networkptr newNetwork(const vector<stateMachinePtr> &peers);
+template<class TRaftPtr> void setRandomizedElectionTimeout(TRaftPtr &r, int v);
 
 TestRaftPtr newTestRaft(uint64_t id, vector<uint64_t> &&peers, int election, int heartbeat, StoragePtr storage) {
 	auto config = newTestConfig(id, std::move(peers), election, heartbeat, storage);
@@ -131,7 +73,7 @@ TestRaftPtr newTestLearnerRaft(uint64_t id, vector<uint64_t> &&peers, vector<uin
 	cfg.learners = learners;
 	return std::make_shared<testRaft>(cfg);
 }
-
+#ifndef DISABLE_RAFT_TEST
 BOOST_AUTO_TEST_CASE(TestProgressBecomeProbe) {
 	uint64_t match = 1;
 	struct {
@@ -439,8 +381,6 @@ BOOST_AUTO_TEST_CASE(TestLeaderElectionPreVote) {
 	testLeaderElection(true);
 }
 
-template<class TRaftPtr>
-void setRandomizedElectionTimeout(TRaftPtr &r, int v);
 // TestLearnerElectionTimeout verfies that the leader should not start election even
 // when times out.
 BOOST_AUTO_TEST_CASE(TestLearnerElectionTimeout) {
@@ -1855,7 +1795,7 @@ BOOST_AUTO_TEST_CASE(TestReadOnlyForNewLeader) {
 		hs.set_commit(c.committed);
 		storage->SetHardState(hs);
 		if (c.compactIndex != 0) {
-			storage->compact(c.compactIndex);
+			storage->Compact(c.compactIndex);
 		}
 		auto cfg = newTestConfig(c.id, { 1, 2, 3 }, 10, 1, storage);
 		cfg.Applied = c.applied;
@@ -1900,6 +1840,1235 @@ BOOST_AUTO_TEST_CASE(TestReadOnlyForNewLeader) {
 	BOOST_REQUIRE_EQUAL(rs.RequestCtx, wctx);
 }
 
+BOOST_AUTO_TEST_CASE(TestLeaderAppResp) {
+	// initial progress: match = 0; next = 3
+	struct {
+		uint64_t index;
+		bool reject;
+		// progress
+		uint64_t wmatch;
+		uint64_t wnext;
+		// message
+		int wmsgNum;
+		uint64_t windex;
+		uint64_t wcommitted;
+	} tests[] = {
+		{3, true, 0, 3, 0, 0, 0},  // stale resp; no replies
+		{ 2, true, 0, 2, 1, 1, 0 },  // denied resp; leader does not commit; decrease next and send probing msg
+		{ 2, false, 2, 4, 2, 2, 2 }, // accept resp; leader commits; broadcast with commit index
+		{ 0, false, 0, 3, 0, 0, 0 }, // ignore heartbeat replies
+	};
+
+	for (auto &tt : tests) {
+		// sm term is 1 after it becomes the leader.
+		// thus the last log term must be 1 to be committed.
+		auto storage = std::make_shared<MemoryStorage>();
+		storage->append({ {}, makeEntry(1, 0), makeEntry(2, 1) });
+		auto sm = newTestRaft(1, { 1, 2, 3 }, 10, 1, storage);
+		sm->m_raftLog->m_unstable.m_offset = 3;
+		sm->becomeCandidate();
+		sm->becomeLeader();
+		sm->readMessages();
+		auto msg = make_message(2, 0, MsgAppResp, tt.index, sm->m_Term, tt.reject);
+		msg->set_rejecthint(tt.index);
+		sm->Step(*msg);
+
+		auto &p = sm->m_prs[2];
+		BOOST_REQUIRE_EQUAL(p->Match, tt.wmatch);
+		BOOST_REQUIRE_EQUAL(p->Next, tt.wnext);
+
+		auto msgs = sm->readMessages();
+		for (auto &msg : msgs) {
+			BOOST_REQUIRE_EQUAL(msg->index(), tt.windex);
+			BOOST_REQUIRE_EQUAL(msg->commit(), tt.wcommitted);
+		}
+	}
+}
+
+// When the leader receives a heartbeat tick, it should
+// send a MsgHeartbeat with m.Index = 0, m.LogTerm=0 and empty entries.
+BOOST_AUTO_TEST_CASE(TestBcastBeat) {
+	uint64_t offset = 1000;
+	// make a state machine with log.offset = 1000
+	auto s = makeSnapshot(offset, 1);
+	for (uint64_t i : {1, 2, 3}) {
+		s->mutable_metadata()->mutable_conf_state()->add_nodes(i);
+	}
+	auto storage = std::make_shared<MemoryStorage>();
+	storage->apply_snapshot(*s);
+	auto sm = newTestRaft(1, {}, 10, 1, storage);
+	sm->m_Term = 1;
+
+	sm->becomeCandidate();
+	sm->becomeLeader();
+	for (size_t i = 0; i < 10; i++) {
+		mustAppendEntry(sm.get(), { makeEntry(i + 1, 0) });
+	}
+	// slow follower
+	sm->m_prs[2]->Match = 5;
+	sm->m_prs[2]->Next = 6;
+	// normal follower
+	sm->m_prs[3]->Match = sm->m_raftLog->lastIndex();
+	sm->m_prs[3]->Next = sm->m_raftLog->lastIndex() + 1;
+
+	sm->Step(*make_message(0, 0, MsgBeat));
+	auto msgs = sm->readMessages();
+	BOOST_REQUIRE_EQUAL(msgs.size(), 2);
+	map<uint64_t, uint64_t> wantCommitMap = {
+		{2, min(sm->m_raftLog->m_committed, sm->m_prs[2]->Match)},
+		{3, min(sm->m_raftLog->m_committed, sm->m_prs[3]->Match)},
+	};
+	for (auto &m : msgs) {
+		BOOST_REQUIRE_EQUAL(m->type(), MsgHeartbeat);
+		BOOST_REQUIRE_EQUAL(m->index(), 0);
+		BOOST_REQUIRE_EQUAL(m->logterm(), 0);
+		BOOST_REQUIRE_EQUAL(wantCommitMap[m->to()], m->commit());
+		wantCommitMap.erase(m->to());
+		BOOST_REQUIRE_EQUAL(m->entries_size(), 0);
+	}
+}
+
+BOOST_AUTO_TEST_CASE(TestRecvMsgBeat) {
+	struct {
+		StateType state;
+		int wMsg;
+	} tests[] = {
+		{StateLeader, 2},
+		// candidate and follower should ignore MsgBeat
+	{ StateCandidate, 0 },
+	{ StateFollower, 0 },
+	};
+
+	for (auto &tt : tests) {
+		auto storage = std::make_shared<MemoryStorage>();
+		storage->append({ {}, makeEntry(1, 0), makeEntry(2, 1) });
+		auto sm = newTestRaft(1, { 1, 2, 3 }, 10, 1, storage);
+		sm->m_Term = 1;
+		sm->m_state = tt.state;
+		switch (tt.state) {
+		case StateFollower:
+			sm->m_step = stepFollower;
+			break;
+		case StateCandidate:
+			sm->m_step = stepCandidate;
+			break;
+		case StateLeader:
+			sm->m_step = stepLeader;
+			break;
+		}
+
+		sm->Step(*make_message(1, 1, MsgBeat));
+
+		auto msgs = sm->readMessages();
+		BOOST_REQUIRE_EQUAL(msgs.size(), tt.wMsg);
+
+		for (auto &m : msgs) {
+			BOOST_REQUIRE_EQUAL(m->type(), MsgHeartbeat);
+		}
+	}
+}
+
+BOOST_AUTO_TEST_CASE(TestLeaderIncreaseNext) {
+	vector<Entry> previousEnts = { makeEntry(1, 1), makeEntry(2, 1), makeEntry(3, 1) };
+	struct {
+		// progress
+		ProgressStateType state;
+		uint64_t next;
+
+		uint64_t wnext;
+	} tests[] = {
+		// state replicate, optimistically increase next
+		// previous entries + noop entry + propose + 1
+		{ProgressStateReplicate, 2, uint64_t(previousEnts.size() + 1 + 1 + 1)},
+		// state probe, not optimistically increase next
+		{ ProgressStateProbe, 2, 2 },
+	};
+
+	for (auto &tt : tests) {
+		auto sm = newTestRaft(1, { 1, 2 }, 10, 1, std::make_shared<MemoryStorage>());
+		sm->m_raftLog->append(previousEnts);
+		sm->becomeCandidate();
+		sm->becomeLeader();
+		sm->m_prs[2]->State = tt.state;
+		sm->m_prs[2]->Next = tt.next;
+		sm->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0,0, "somedata") }));
+
+		auto &p = sm->m_prs[2];
+		BOOST_REQUIRE_EQUAL(p->Next, tt.wnext);
+	}
+}
+
+BOOST_AUTO_TEST_CASE(TestSendAppendForProgressProbe) {
+	auto r = newTestRaft(1, { 1, 2 }, 10, 1, std::make_shared<MemoryStorage>());
+	r->becomeCandidate();
+	r->becomeLeader();
+	r->readMessages();
+	r->m_prs[2]->becomeProbe();
+
+	// each round is a heartbeat
+	for (size_t i = 0; i < 3; i++) {
+		if (i == 0) {
+			// we expect that raft will only send out one msgAPP on the first
+			// loop. After that, the follower is paused until a heartbeat response is
+			// received.
+			mustAppendEntry(r.get(), { makeEntry(0, 0, "somedata") });
+			r->sendAppend(2);
+			auto msg = r->readMessages();
+			BOOST_REQUIRE_EQUAL(msg.size(), 1);
+			BOOST_REQUIRE_EQUAL(msg[0]->index(), 0);
+		}
+
+		BOOST_REQUIRE_EQUAL(r->m_prs[2]->IsPaused(), true);
+		for (size_t j = 0; j < 10; j++) {
+			mustAppendEntry(r.get(), { makeEntry(0, 0, "somedata") });
+			r->sendAppend(2);
+			auto msg = r->readMessages();
+			BOOST_REQUIRE_EQUAL(msg.size(), 0);
+		}
+
+		// do a heartbeat
+		for (size_t j = 0; j < r->m_heartbeatTimeout; j++) {
+			r->Step(*make_message(1, 1, MsgBeat));
+		}
+		BOOST_REQUIRE_EQUAL(r->m_prs[2]->IsPaused(), true);
+
+		// consume the heartbeat
+		auto msg = r->readMessages();
+		BOOST_REQUIRE_EQUAL(msg.size(), 1);
+		BOOST_REQUIRE_EQUAL(msg[0]->type(), MsgHeartbeat);
+	}
+
+	// a heartbeat response will allow another message to be sent
+	r->Step(*make_message(2, 1, MsgHeartbeatResp));
+	auto msg = r->readMessages();
+	BOOST_REQUIRE_EQUAL(msg.size(), 1);
+	BOOST_REQUIRE_EQUAL(msg[0]->index(), 0);
+	BOOST_REQUIRE_EQUAL(r->m_prs[2]->IsPaused(), true);
+}
+
+BOOST_AUTO_TEST_CASE(TestSendAppendForProgressReplicate) {
+	auto r = newTestRaft(1, { 1, 2 }, 10, 1, std::make_shared<MemoryStorage>());
+	r->becomeCandidate();
+	r->becomeLeader();
+	r->readMessages();
+	r->m_prs[2]->becomeReplicate();
+
+	for (size_t i = 0; i < 10; i++) {
+		mustAppendEntry(r.get(), {makeEntry(0, 0, "somedata")});
+		r->sendAppend(2);
+		auto msgs = r->readMessages();
+		BOOST_REQUIRE_EQUAL(msgs.size(), 1);
+	}
+}
+
+BOOST_AUTO_TEST_CASE(TestSendAppendForProgressSnapshot) {
+	auto r = newTestRaft(1, { 1, 2 }, 10, 1, std::make_shared<MemoryStorage>());
+	r->becomeCandidate();
+	r->becomeLeader();
+	r->readMessages();
+	r->m_prs[2]->becomeSnapshot(10);
+
+	for (size_t i = 0; i < 10; i++) {
+		mustAppendEntry(r.get(), { makeEntry(0, 0, "somedata") });
+		r->sendAppend(2);
+		auto msgs = r->readMessages();
+		BOOST_REQUIRE_EQUAL(msgs.size(), 0);
+	}
+}
+
+BOOST_AUTO_TEST_CASE(TestRecvMsgUnreachable) {
+	vector<Entry> previousEnts = { makeEntry(1, 1), makeEntry(2, 1), makeEntry(3, 1) };
+	auto s = std::make_shared<MemoryStorage>();
+	s->append(previousEnts);
+	auto r = newTestRaft(1, { 1, 2 }, 10, 1, s);
+	r->becomeCandidate();
+	r->becomeLeader();
+	r->readMessages();
+	// set node 2 to state replicate
+	r->m_prs[2]->Match = 3;
+	r->m_prs[2]->becomeReplicate();
+	r->m_prs[2]->optimisticUpdate(5);
+
+	r->Step(*make_message(2, 1, MsgUnreachable));
+
+	BOOST_REQUIRE_EQUAL(r->m_prs[2]->State, ProgressStateProbe);
+	BOOST_REQUIRE_EQUAL(r->m_prs[2]->Match + 1, r->m_prs[2]->Next);
+}
+
+BOOST_AUTO_TEST_CASE(TestRestore) {
+	auto s = makeSnapshot(11, 11);
+	for (uint64_t i : {1, 2, 3}) {
+		s->mutable_metadata()->mutable_conf_state()->add_nodes(i);
+	}
+
+	auto storage = std::make_shared<MemoryStorage>();
+	auto sm = newTestRaft(1, { 1, 2 }, 10, 1, storage);
+	BOOST_REQUIRE_EQUAL(sm->restore(*s), true);
+	BOOST_REQUIRE_EQUAL(sm->m_raftLog->lastIndex(), s->metadata().index());
+
+	uint64_t t;
+	auto err = sm->m_raftLog->term(s->metadata().index(), t);
+	BOOST_REQUIRE_EQUAL(mustTerm(t, err), s->metadata().term());
+
+	auto sg = sm->nodes();
+	auto &ss = s->metadata().conf_state();
+	BOOST_REQUIRE_EQUAL(sg.size(), ss.nodes().size());
+	for (size_t i = 0; i < sg.size(); ++i) {
+		BOOST_REQUIRE_EQUAL(sg[i], ss.nodes()[(int)i]);
+	}
+	BOOST_REQUIRE_EQUAL(sm->restore(*s), false);
+}
+
+// TestRestoreWithLearner restores a snapshot which contains learners.
+BOOST_AUTO_TEST_CASE(TestRestoreWithLearner) {
+	auto s = makeSnapshot(11, 11);
+	for (uint64_t i : {1, 2}) {
+		s->mutable_metadata()->mutable_conf_state()->add_nodes(i);
+	}
+	for (uint64_t i : {3}) {
+		s->mutable_metadata()->mutable_conf_state()->add_learners(i);
+	}
+	auto storage = std::make_shared<MemoryStorage>();
+	auto sm = newTestLearnerRaft(3, { 1, 2 }, { 3 }, 8, 2, storage);
+	BOOST_REQUIRE_EQUAL(sm->restore(*s), true);
+	BOOST_REQUIRE_EQUAL(sm->m_raftLog->lastIndex(), s->metadata().index());
+	uint64_t t;
+	auto err = sm->m_raftLog->term(s->metadata().index(), t);
+	BOOST_REQUIRE_EQUAL(mustTerm(t, err), s->metadata().term());
+	auto sg = sm->nodes();
+	BOOST_REQUIRE_EQUAL(sg.size(), s->metadata().conf_state().nodes().size());
+	auto lns = sm->learnerNodes();
+	BOOST_REQUIRE_EQUAL(lns.size(), s->metadata().conf_state().learners().size());
+	for (auto n : s->metadata().conf_state().nodes()) {
+		BOOST_REQUIRE_EQUAL(sm->m_prs[n]->IsLearner, false);
+	}
+	for (auto n : s->metadata().conf_state().learners()) {
+		BOOST_REQUIRE_EQUAL(sm->m_learnerPrs[n]->IsLearner, true);
+	}
+	BOOST_REQUIRE_EQUAL(sm->restore(*s), false);
+}
+
+BOOST_AUTO_TEST_CASE(TestRestoreInvalidLearner) {
+	auto s = makeSnapshot(11, 11);
+	for (uint64_t i : {1, 2}) {
+		s->mutable_metadata()->mutable_conf_state()->add_nodes(i);
+	}
+	for (uint64_t i : {3}) {
+		s->mutable_metadata()->mutable_conf_state()->add_learners(i);
+	}
+
+	auto storage = std::make_shared<MemoryStorage>();
+	auto sm = newTestRaft(3, { 1, 2, 3 }, 10, 1, storage);
+
+	BOOST_REQUIRE_EQUAL(sm->m_isLearner, false);
+	BOOST_REQUIRE_EQUAL(sm->restore(*s), false);
+}
+
+BOOST_AUTO_TEST_CASE(TestRestoreLearnerPromotion) {
+	auto s = makeSnapshot(11, 11);
+	for (uint64_t i : {1, 2, 3}) {
+		s->mutable_metadata()->mutable_conf_state()->add_nodes(i);
+	}
+	auto storage = std::make_shared<MemoryStorage>();
+	auto sm = newTestLearnerRaft(3, { 1, 2 }, { 3 }, 10, 1, storage);
+
+	BOOST_REQUIRE_EQUAL(sm->m_isLearner, true);
+	BOOST_REQUIRE_EQUAL(sm->restore(*s), true);
+	BOOST_REQUIRE_EQUAL(sm->m_isLearner, false);
+}
+
+// TestLearnerReceiveSnapshot tests that a learner can receive a snpahost from leader
+BOOST_AUTO_TEST_CASE(TestLearnerReceiveSnapshot) {
+	// restore the state machine from a snapshot so it has a compacted log and a snapshot
+	auto s = makeSnapshot(11, 11);
+	for (uint64_t i : {1}) {
+		s->mutable_metadata()->mutable_conf_state()->add_nodes(i);
+	}
+	for (uint64_t i : {2}) {
+		s->mutable_metadata()->mutable_conf_state()->add_learners(i);
+	}
+
+	auto n1 = newTestLearnerRaft(1, { 1 }, { 2 }, 10, 1, std::make_shared<MemoryStorage>());
+	auto n2 = newTestLearnerRaft(2, { 1 }, { 2 }, 10, 1, std::make_shared<MemoryStorage>());
+
+	n1->restore(*s);
+
+	// Force set n1 appplied index.
+	n1->m_raftLog->appliedTo(n1->m_raftLog->m_committed);
+
+	auto nt = newNetwork({ n1, n2 });
+
+	setRandomizedElectionTimeout(n1, n1->m_electionTimeout);
+	for (size_t i = 0; i < n1->m_electionTimeout; i++) {
+		n1->m_tick();
+	}
+	
+	nt->send(make_message(1, 1, MsgBeat));
+	BOOST_REQUIRE_EQUAL(n2->m_raftLog->m_committed, n1->m_raftLog->m_committed);
+}
+
+BOOST_AUTO_TEST_CASE(TestRestoreIgnoreSnapshot) {
+	vector<Entry> previousEnts = { makeEntry(1, 1), makeEntry(2, 1), makeEntry(3, 1) };
+	uint64_t commit = 1;
+	auto storage = std::make_shared<MemoryStorage>();
+	auto sm = newTestRaft(1, { 1, 2 }, 10, 1, storage);
+	sm->m_raftLog->append(previousEnts);
+	sm->m_raftLog->commitTo(commit);
+
+	auto s = makeSnapshot(commit, 1);
+	for (uint64_t i : {1, 2}) {
+		s->mutable_metadata()->mutable_conf_state()->add_nodes(i);
+	}
+
+	// ignore snapshot
+	BOOST_REQUIRE_EQUAL(sm->restore(*s), false);
+	BOOST_REQUIRE_EQUAL(sm->m_raftLog->m_committed, commit);
+
+	// ignore snapshot and fast forward commit
+	s->mutable_metadata()->set_index(commit + 1);
+	BOOST_REQUIRE_EQUAL(sm->restore(*s), false);
+	BOOST_REQUIRE_EQUAL(sm->m_raftLog->m_committed, commit + 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestProvideSnap) {
+	// restore the state machine from a snapshot so it has a compacted log and a snapshot
+	auto s = makeSnapshot(11, 11);
+	for (uint64_t i : {1, 2}) {
+		s->mutable_metadata()->mutable_conf_state()->add_nodes(i);
+	}
+	auto storage = std::make_shared<MemoryStorage>();
+	auto sm = newTestRaft(1, { 1 }, 10, 1, storage);
+	sm->restore(*s);
+
+	sm->becomeCandidate();
+	sm->becomeLeader();
+
+	// force set the next of node 2, so that node 2 needs a snapshot
+	sm->m_prs[2]->Next = sm->m_raftLog->firstIndex();
+	sm->Step(*make_message(2, 1, MsgAppResp, sm->m_prs[2]->Next - 1, 0, true));
+
+	auto msgs = sm->readMessages();
+	BOOST_REQUIRE_EQUAL(msgs.size(), 1);
+	auto &m = msgs[0];
+	BOOST_REQUIRE_EQUAL(m->type(), MsgSnap);
+}
+
+BOOST_AUTO_TEST_CASE(TestIgnoreProvidingSnap) {
+	// restore the state machine from a snapshot so it has a compacted log and a snapshot
+	auto s = makeSnapshot(11, 11);
+	for (uint64_t i : {1, 2}) {
+		s->mutable_metadata()->mutable_conf_state()->add_nodes(i);
+	}
+	auto storage = std::make_shared<MemoryStorage>();
+	auto sm = newTestRaft(1, { 1 }, 10, 1, storage);
+	sm->restore(*s);
+
+	sm->becomeCandidate();
+	sm->becomeLeader();
+
+	// force set the next of node 2, so that node 2 needs a snapshot
+	// change node 2 to be inactive, expect node 1 ignore sending snapshot to 2
+	sm->m_prs[2]->Next = sm->m_raftLog->firstIndex() - 1;
+	sm->m_prs[2]->RecentActive = false;
+
+	sm->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0, 0, "somedata") }));
+
+	auto msgs = sm->readMessages();
+	BOOST_REQUIRE_EQUAL(msgs.size(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestRestoreFromSnapMsg) {
+	auto s = makeSnapshot(11, 11);
+	for (uint64_t i : {1, 2}) {
+		s->mutable_metadata()->mutable_conf_state()->add_nodes(i);
+	}
+	auto m = make_message(1, 2, MsgSnap);
+	*m->mutable_snapshot() = *s;
+
+	auto sm = newTestRaft(2, { 1, 2 }, 10, 1, std::make_shared<MemoryStorage>());
+	sm->Step(*m);
+
+	BOOST_REQUIRE_EQUAL(sm->m_lead, 1);
+
+	// TODO(bdarnell): what should this test?
+}
+
+BOOST_AUTO_TEST_CASE(TestSlowNodeRestore) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	nt->isolate(3);
+	for (size_t j = 0; j <= 100; j++) {
+		nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
+	}
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+	nextEnts(lead, nt->storage[1].get());
+	ConfState cs;
+	for (auto n : lead->nodes()) *cs.mutable_nodes()->Add() = n;
+	Snapshot sh;
+	dynamic_cast<MemoryStorage*>(nt->storage[1].get())->CreateSnapshot(lead->m_raftLog->m_applied, &cs, "", sh);
+	dynamic_cast<MemoryStorage*>(nt->storage[1].get())->Compact(lead->m_raftLog->m_applied);
+
+	nt->recover();
+	// send heartbeats so that the leader can learn everyone is active.
+	// node 3 will only be considered as active when node 1 receives a reply from it.
+	for (;;) {
+		nt->send(make_message(1, 1, MsgBeat));
+		if (lead->m_prs[3]->RecentActive) {
+			break;
+		}
+	}
+
+	// trigger a snapshot
+	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
+
+	auto follower = dynamic_cast<testRaft*>(nt->peers[3].get());
+
+	// trigger a commit
+	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
+	BOOST_REQUIRE_EQUAL(follower->m_raftLog->m_committed, lead->m_raftLog->m_committed);
+}
+// TestStepConfig tests that when raft step msgProp in EntryConfChange type,
+// it appends the entry to log and sets pendingConf to be true.
+BOOST_AUTO_TEST_CASE(TestStepConfig) {
+	// a raft that cannot make progress
+	auto r = newTestRaft(1, { 1, 2 }, 10, 1, std::make_shared<MemoryStorage>());
+	r->becomeCandidate();
+	r->becomeLeader();
+	auto index = r->m_raftLog->lastIndex();
+	r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0,0,"",EntryConfChange) }));
+	BOOST_REQUIRE_EQUAL(r->m_raftLog->lastIndex(), index + 1);
+	BOOST_REQUIRE_EQUAL(r->m_pendingConfIndex, index + 1);
+}
+
+// TestStepIgnoreConfig tests that if raft step the second msgProp in
+// EntryConfChange type when the first one is uncommitted, the node will set
+// the proposal to noop and keep its original state.
+BOOST_AUTO_TEST_CASE(TestStepIgnoreConfig) {
+	// a raft that cannot make progress
+	auto r = newTestRaft(1, { 1, 2 }, 10, 1, std::make_shared<MemoryStorage>());
+	r->becomeCandidate();
+	r->becomeLeader();
+	r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0,0,"",EntryConfChange) }));
+	auto index = r->m_raftLog->lastIndex();
+	auto pendingConfIndex = r->m_pendingConfIndex;
+	r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0,0,"",EntryConfChange) }));
+	vector<Entry> wents = { makeEntry(3, 1, "", EntryNormal) };
+	vector<Entry> ents;
+	auto err = r->m_raftLog->entries(ents, index + 1, noLimit);
+	BOOST_REQUIRE_EQUAL(err, OK);
+	equal_entrys(ents, wents);
+	BOOST_REQUIRE_EQUAL(r->m_pendingConfIndex, pendingConfIndex);
+}
+
+// TestNewLeaderPendingConfig tests that new leader sets its pendingConfigIndex
+// based on uncommitted entries.
+BOOST_AUTO_TEST_CASE(TestNewLeaderPendingConfig) {
+	struct {
+		bool addEntry;
+		uint64_t wpendingIndex;
+	} tests[] = {
+		{false, 0},
+		{true, 1},
+	};
+	for (auto &tt : tests) {
+		auto r = newTestRaft(1, { 1, 2 }, 10, 1, std::make_shared<MemoryStorage>());
+		if (tt.addEntry) {
+			mustAppendEntry(r.get(), { makeEntry(0,0,"",EntryNormal) });
+		}
+		r->becomeCandidate();
+		r->becomeLeader();
+		BOOST_REQUIRE_EQUAL(r->m_pendingConfIndex, tt.wpendingIndex);
+	}
+}
+
+
+// TestAddNode tests that addNode could update nodes correctly.
+BOOST_AUTO_TEST_CASE(TestAddNode) {
+	auto r = newTestRaft(1, { 1 }, 10, 1, std::make_shared<MemoryStorage>());
+	r->addNode(2);
+	auto nodes = r->nodes();
+	vector<uint64_t> wnodes = { 1, 2 };
+	BOOST_REQUIRE_EQUAL(wnodes.size(), nodes.size());
+	for (size_t i = 0; i < wnodes.size(); ++i) {
+		BOOST_REQUIRE_EQUAL(wnodes[i], nodes[i]);
+	}
+}
+
+// TestAddLearner tests that addLearner could update nodes correctly.
+BOOST_AUTO_TEST_CASE(TestAddLearner) {
+	auto r = newTestRaft(1, { 1 }, 10, 1, std::make_shared<MemoryStorage>());
+	r->addLearner(2);
+	auto nodes = r->learnerNodes();
+	vector<uint64_t> wnodes = { 2 };
+	BOOST_REQUIRE_EQUAL(wnodes.size(), nodes.size());
+	for (size_t i = 0; i < wnodes.size(); ++i) {
+		BOOST_REQUIRE_EQUAL(wnodes[i], nodes[i]);
+	}
+	BOOST_REQUIRE_EQUAL(r->m_learnerPrs[2]->IsLearner, true);
+}
+
+// TestAddNodeCheckQuorum tests that addNode does not trigger a leader election
+// immediately when checkQuorum is set.
+BOOST_AUTO_TEST_CASE(TestAddNodeCheckQuorum) {
+	auto r = newTestRaft(1, { 1 }, 10, 1, std::make_shared<MemoryStorage>());
+	r->m_checkQuorum = true;
+
+	r->becomeCandidate();
+	r->becomeLeader();
+
+	for (auto i = 0; i < r->m_electionTimeout-1; i++) {
+		r->m_tick();
+	}
+
+	r->addNode(2);
+
+	// This tick will reach electionTimeout, which triggers a quorum check.
+	r->m_tick();
+
+	// Node 1 should still be the leader after a single tick.
+	BOOST_REQUIRE_EQUAL(r->m_state, StateLeader);
+
+	// After another electionTimeout ticks without hearing from node 2,
+	// node 1 should step down.
+	for (size_t i = 0; i < r->m_electionTimeout; i++) {
+		r->m_tick();
+	}
+
+	BOOST_REQUIRE_EQUAL(r->m_state, StateFollower);
+}
+
+// TestRemoveNode tests that removeNode could update nodes and
+// and removed list correctly.
+BOOST_AUTO_TEST_CASE(TestRemoveNode) {
+	auto r = newTestRaft(1, { 1, 2 }, 10, 1, std::make_shared<MemoryStorage>());
+	r->removeNode(2);
+	vector<uint64_t> w = { 1 };
+	auto g = r->nodes();
+	BOOST_REQUIRE_EQUAL(g.size(), w.size());
+	for (size_t i = 0; i < g.size(); i++) {
+		BOOST_REQUIRE_EQUAL(g[i], w[i]);
+	}
+
+	// remove all nodes from cluster
+	r->removeNode(1);
+	w = {};
+	g = r->nodes();
+	BOOST_REQUIRE_EQUAL(g.size(), w.size());
+	for (size_t i = 0; i < g.size(); i++) {
+		BOOST_REQUIRE_EQUAL(g[i], w[i]);
+	}
+}
+
+// TestRemoveLearner tests that removeNode could update nodes and
+// and removed list correctly.
+BOOST_AUTO_TEST_CASE(TestRemoveLearner) {
+	auto r = newTestLearnerRaft(1, { 1 }, { 2 }, 10, 1, std::make_shared<MemoryStorage>());
+	r->removeNode(2);
+	vector<uint64_t> w = { 1 };
+	auto g = r->nodes();
+	BOOST_REQUIRE_EQUAL(g.size(), w.size());
+	for (size_t i = 0; i < g.size(); i++) {
+		BOOST_REQUIRE_EQUAL(g[i], w[i]);
+	}
+
+	w = {};
+	g = r->learnerNodes();
+	BOOST_REQUIRE_EQUAL(g.size(), w.size());
+	for (size_t i = 0; i < g.size(); i++) {
+		BOOST_REQUIRE_EQUAL(g[i], w[i]);
+	}
+
+	// remove all nodes from cluster
+	r->removeNode(1);
+	g = r->nodes();
+	BOOST_REQUIRE_EQUAL(g.size(), w.size());
+	for (size_t i = 0; i < g.size(); i++) {
+		BOOST_REQUIRE_EQUAL(g[i], w[i]);
+	}
+}
+
+BOOST_AUTO_TEST_CASE(TestPromotable) {
+	uint64_t id = 1;
+	struct {
+		vector<uint64_t> peers;
+		bool wp;
+	}tests[] = {
+		{{1}, true},
+		{{1, 2, 3}, true},
+		{{}, false},
+		{{2, 3}, false},
+	};
+	for (auto &tt : tests) {
+		auto r = newTestRaft(id, std::move(tt.peers), 5, 1, std::make_shared<MemoryStorage>());
+		auto g = r->promotable();
+		BOOST_REQUIRE_EQUAL(g, tt.wp);
+	}
+}
+
+BOOST_AUTO_TEST_CASE(TestRaftNodes) {
+	struct {
+		vector<uint64_t> ids;
+		vector<uint64_t> wids;
+	}tests[] = {
+		{{1, 2, 3},{1, 2, 3},},
+		{{3, 2, 1},{1, 2, 3},},
+	};
+	for (auto &tt : tests) {
+		auto r = newTestRaft(1, std::move(tt.ids), 10, 1, std::make_shared<MemoryStorage>());
+		auto g = r->nodes();
+		BOOST_REQUIRE_EQUAL(g.size(), tt.wids.size());
+		for (size_t i = 0; i < g.size(); i++) {
+			BOOST_REQUIRE_EQUAL(g[i], tt.wids[i]);
+		}
+	}
+}
+
+void testCampaignWhileLeader(bool preVote);
+BOOST_AUTO_TEST_CASE(TestCampaignWhileLeader) {
+	testCampaignWhileLeader(false);
+}
+
+BOOST_AUTO_TEST_CASE(TestPreCampaignWhileLeader) {
+	testCampaignWhileLeader(true);
+}
+
+// TestCommitAfterRemoveNode verifies that pending commands can become
+// committed when a config change reduces the quorum requirements.
+BOOST_AUTO_TEST_CASE(TestCommitAfterRemoveNode) {
+	// Create a cluster with two nodes.
+	auto s = std::make_shared<MemoryStorage>();
+	auto r = newTestRaft(1, { 1, 2 }, 5, 1, s);
+	r->becomeCandidate();
+	r->becomeLeader();
+
+	// Begin to remove the second node.
+	ConfChange cc;
+	cc.set_type(ConfChangeRemoveNode);
+	cc.set_nodeid(2);
+	auto ccData = cc.SerializeAsString();
+	r->Step(*make_message(0, 0, MsgProp, 0, 0, false, { makeEntry(0, 0, std::move(ccData), EntryConfChange) }));
+	// Stabilize the log and make sure nothing is committed yet.
+	auto ents = nextEnts(r.get(), s.get());
+	BOOST_REQUIRE_EQUAL(ents.size(), 0);
+	auto ccIndex = r->m_raftLog->lastIndex();
+
+	// While the config change is pending, make another proposal.
+	r->Step(*make_message(0, 0, MsgProp, 0, 0, false, { makeEntry(0, 0, "hello", EntryNormal) }));
+
+	// Node 2 acknowledges the config change, committing it.
+	r->Step(*make_message(2, 0, MsgAppResp, ccIndex));
+	ents = nextEnts(r.get(), s.get());
+	BOOST_REQUIRE_EQUAL(ents.size(), 2);
+	BOOST_REQUIRE_EQUAL(ents[0].type(), EntryNormal);
+	BOOST_REQUIRE_EQUAL(ents[0].data().empty(), true);
+	BOOST_REQUIRE_EQUAL(ents[1].type(), EntryConfChange);
+
+	// Apply the config change. This reduces quorum requirements so the
+	// pending command can now commit.
+	r->removeNode(2);
+	ents = nextEnts(r.get(), s.get());
+	BOOST_REQUIRE_EQUAL(ents.size(), 1);
+	BOOST_REQUIRE_EQUAL(ents[0].type(), EntryNormal);
+	BOOST_REQUIRE_EQUAL(ents[0].data(), "hello");
+}
+
+void checkLeaderTransferState(testRaft *r, StateType state, uint64_t lead);
+// TestLeaderTransferToUpToDateNode verifies transferring should succeed
+// if the transferee has the most up-to-date log entries when transfer starts.
+BOOST_AUTO_TEST_CASE(TestLeaderTransferToUpToDateNode) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	BOOST_REQUIRE_EQUAL(lead->m_lead, 1);
+
+	// Transfer leadership to 2.
+	nt->send(make_message(2, 1, MsgTransferLeader));
+
+	checkLeaderTransferState(lead, StateFollower, 2);
+
+	// After some log replication, transfer leadership back to 1.
+	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
+
+	nt->send(make_message(1, 2, MsgTransferLeader));
+
+	checkLeaderTransferState(lead, StateLeader, 1);
+}
+
+// TestLeaderTransferToUpToDateNodeFromFollower verifies transferring should succeed
+// if the transferee has the most up-to-date log entries when transfer starts.
+// Not like TestLeaderTransferToUpToDateNode, where the leader transfer message
+// is sent to the leader, in this test case every leader transfer message is sent
+// to the follower.
+BOOST_AUTO_TEST_CASE(TestLeaderTransferToUpToDateNodeFromFollower) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	BOOST_REQUIRE_EQUAL(lead->m_lead, 1);
+
+	// Transfer leadership to 2.
+	nt->send(make_message(2, 2, MsgTransferLeader));
+
+	checkLeaderTransferState(lead, StateFollower, 2);
+
+	// After some log replication, transfer leadership back to 1.
+	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
+
+	nt->send(make_message(1, 1, MsgTransferLeader));
+
+	checkLeaderTransferState(lead, StateLeader, 1);
+}
+// TestLeaderTransferWithCheckQuorum ensures transferring leader still works
+// even the current leader is still under its leader lease
+BOOST_AUTO_TEST_CASE(TestLeaderTransferWithCheckQuorum) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	for (int i = 1; i < 4; i++) {
+		auto r = dynamic_cast<testRaft*>(nt->peers[i].get());
+		r->m_checkQuorum = true;
+		setRandomizedElectionTimeout(r, r->m_electionTimeout + i);
+	}
+
+	// Letting peer 2 electionElapsed reach to timeout so that it can vote for peer 1
+	auto f = dynamic_cast<testRaft*>(nt->peers[2].get());
+	for (int i = 0; i < f->m_electionTimeout; i++) {
+		f->m_tick();
+	}
+
+	nt->send(make_message(1, 1, MsgHup));
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	BOOST_REQUIRE_EQUAL(lead->m_lead, 1);
+
+	// Transfer leadership to 2.
+	nt->send(make_message(2, 1, MsgTransferLeader));
+
+	checkLeaderTransferState(lead, StateFollower, 2);
+
+	// After some log replication, transfer leadership back to 1.
+	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
+
+	nt->send(make_message(1, 2, MsgTransferLeader));
+
+	checkLeaderTransferState(lead, StateLeader, 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestLeaderTransferToSlowFollower) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	nt->isolate(3);
+	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
+
+	nt->recover();
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+	BOOST_REQUIRE_EQUAL(lead->m_prs[3]->Match, 1);
+
+	// Transfer leadership to 3 when node 3 is lack of log.
+	nt->send(make_message(3, 1, MsgTransferLeader));
+
+	checkLeaderTransferState(lead, StateFollower, 3);
+}
+
+BOOST_AUTO_TEST_CASE(TestLeaderTransferAfterSnapshot) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	nt->isolate(3);
+
+	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+	nextEnts(lead, nt->storage[1].get());
+	ConfState cs;
+	for (auto n : lead->nodes()) *cs.mutable_nodes()->Add() = n;
+	Snapshot sh;
+	dynamic_cast<MemoryStorage*>(nt->storage[1].get())->CreateSnapshot(lead->m_raftLog->m_applied, &cs, "", sh);
+	dynamic_cast<MemoryStorage*>(nt->storage[1].get())->Compact(lead->m_raftLog->m_applied);
+
+	nt->recover();
+	BOOST_REQUIRE_EQUAL(lead->m_prs[3]->Match, 1);
+
+	// Transfer leadership to 3 when node 3 is lack of snapshot.
+	nt->send(make_message(3, 1, MsgTransferLeader));
+	// Send pb.MsgHeartbeatResp to leader to trigger a snapshot for node 3.
+	nt->send(make_message(3, 1, MsgHeartbeatResp));
+
+	checkLeaderTransferState(lead, StateFollower, 3);
+}
+
+BOOST_AUTO_TEST_CASE(TestLeaderTransferToSelf) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	// Transfer leadership to self, there will be noop.
+	nt->send(make_message(1, 1, MsgTransferLeader));
+	checkLeaderTransferState(lead, StateLeader, 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestLeaderTransferToNonExistingNode) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+	// Transfer leadership to non-existing node, there will be noop.
+	nt->send(make_message(4, 1, MsgTransferLeader));
+	checkLeaderTransferState(lead, StateLeader, 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestLeaderTransferTimeout) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	nt->isolate(3);
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	// Transfer leadership to isolated node, wait for timeout.
+	nt->send(make_message(3, 1, MsgTransferLeader));
+	BOOST_REQUIRE_EQUAL(lead->m_leadTransferee, 3);
+	for (int i = 0; i < lead->m_heartbeatTimeout; i++) {
+		lead->m_tick();
+	}
+	BOOST_REQUIRE_EQUAL(lead->m_leadTransferee, 3);
+
+	for (int i = 0; i < lead->m_electionTimeout-lead->m_heartbeatTimeout; i++) {
+		lead->m_tick();
+	}
+
+	checkLeaderTransferState(lead, StateLeader, 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestLeaderTransferIgnoreProposal) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	nt->isolate(3);
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	// Transfer leadership to isolated node to let transfer pending, then send proposal.
+	nt->send(make_message(3, 1, MsgTransferLeader));
+	BOOST_REQUIRE_EQUAL(lead->m_leadTransferee, 3);
+
+	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
+	auto err = lead->Step(*make_message(1, 1, MsgProp, 0, 0, false, { {} }));
+	BOOST_REQUIRE_EQUAL(err, ErrProposalDropped);
+	BOOST_REQUIRE_EQUAL(lead->m_prs[1]->Match, 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestLeaderTransferReceiveHigherTermVote) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	nt->isolate(3);
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	// Transfer leadership to isolated node to let transfer pending.
+	nt->send(make_message(3, 1, MsgTransferLeader));
+	BOOST_REQUIRE_EQUAL(lead->m_leadTransferee, 3);
+
+	nt->send(make_message(2, 2, MsgHup, 1, 2));
+
+	checkLeaderTransferState(lead, StateFollower, 2);
+}
+
+BOOST_AUTO_TEST_CASE(TestLeaderTransferRemoveNode) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	nt->ignore(MsgTimeoutNow);
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	// The leadTransferee is removed when leadship transferring.
+	nt->send(make_message(3, 1, MsgTransferLeader));
+	BOOST_REQUIRE_EQUAL(lead->m_leadTransferee, 3);
+
+	lead->removeNode(3);
+
+	checkLeaderTransferState(lead, StateLeader, 1);
+}
+
+// TestLeaderTransferBack verifies leadership can transfer back to self when last transfer is pending.
+BOOST_AUTO_TEST_CASE(TestLeaderTransferBack) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	nt->isolate(3);
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	nt->send(make_message(3, 1, MsgTransferLeader));
+	BOOST_REQUIRE_EQUAL(lead->m_leadTransferee, 3);
+
+	// Transfer leadership back to self.
+	nt->send(make_message(1, 1, MsgTransferLeader));
+
+	checkLeaderTransferState(lead, StateLeader, 1);
+}
+
+// TestLeaderTransferSecondTransferToAnotherNode verifies leader can transfer to another node
+// when last transfer is pending.
+BOOST_AUTO_TEST_CASE(TestLeaderTransferSecondTransferToAnotherNode) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	nt->isolate(3);
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	nt->send(make_message(3, 1, MsgTransferLeader));
+	BOOST_REQUIRE_EQUAL(lead->m_leadTransferee, 3);
+
+	// Transfer leadership to another node.
+	nt->send(make_message(2, 1, MsgTransferLeader));
+
+	checkLeaderTransferState(lead, StateFollower, 2);
+}
+
+// TestLeaderTransferSecondTransferToSameNode verifies second transfer leader request
+// to the same node should not extend the timeout while the first one is pending.
+BOOST_AUTO_TEST_CASE(TestLeaderTransferSecondTransferToSameNode) {
+	auto nt = newNetwork({ nullptr, nullptr, nullptr });
+	nt->send(make_message(1, 1, MsgHup));
+
+	nt->isolate(3);
+
+	auto lead = dynamic_cast<testRaft*>(nt->peers[1].get());
+
+	nt->send(make_message(3, 1, MsgTransferLeader));
+	BOOST_REQUIRE_EQUAL(lead->m_leadTransferee, 3);
+
+	for (int i = 0; i < lead->m_heartbeatTimeout; i++) {
+		lead->m_tick();
+	}
+	// Second transfer leadership request to the same node.
+	nt->send(make_message(3, 1, MsgTransferLeader));
+
+	for (int i = 0; i < lead->m_electionTimeout-lead->m_heartbeatTimeout; i++) {
+		lead->m_tick();
+	}
+
+	checkLeaderTransferState(lead, StateLeader, 1);
+}
+
+// TestTransferNonMember verifies that when a MsgTimeoutNow arrives at
+// a node that has been removed from the group, nothing happens.
+// (previously, if the node also got votes, it would panic as it
+// transitioned to StateLeader)
+BOOST_AUTO_TEST_CASE(TestTransferNonMember) {
+	auto r = newTestRaft(1, { 2, 3, 4 }, 5, 1, std::make_shared<MemoryStorage>());
+	r->Step(*make_message(2, 1, MsgTimeoutNow));
+
+	r->Step(*make_message(2, 1, MsgVoteResp));
+	r->Step(*make_message(3, 1, MsgVoteResp));
+	BOOST_REQUIRE_EQUAL(r->m_state, StateFollower);
+}
+
+// TestNodeWithSmallerTermCanCompleteElection tests the scenario where a node
+// that has been partitioned away (and fallen behind) rejoins the cluster at
+// about the same time the leader node gets partitioned away.
+// Previously the cluster would come to a standstill when run with PreVote
+// enabled.
+BOOST_AUTO_TEST_CASE(TestNodeWithSmallerTermCanCompleteElection) {
+	auto n1 = newTestRaft(1, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
+	auto n2 = newTestRaft(2, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
+	auto n3 = newTestRaft(3, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
+
+	n1->becomeFollower(1, None);
+	n2->becomeFollower(1, None);
+	n3->becomeFollower(1, None);
+
+	n1->m_preVote = true;
+	n2->m_preVote = true;
+	n3->m_preVote = true;
+
+	// cause a network partition to isolate node 3
+	auto nt = newNetwork({ n1, n2, n3 });
+	nt->cut(1, 3);
+	nt->cut(2, 3);
+
+	nt->send(make_message(1, 1, MsgHup));
+
+	auto sm = dynamic_cast<testRaft*>(nt->peers[1].get());
+	BOOST_REQUIRE_EQUAL(sm->m_state, StateLeader);
+
+	sm = dynamic_cast<testRaft*>(nt->peers[2].get());
+	BOOST_REQUIRE_EQUAL(sm->m_state, StateFollower);
+
+	nt->send(make_message(3, 3, MsgHup));
+	sm = dynamic_cast<testRaft*>(nt->peers[3].get());
+	BOOST_REQUIRE_EQUAL(sm->m_state, StatePreCandidate);
+
+	nt->send(make_message(2, 2, MsgHup));
+
+	// check whether the term values are expected
+	// a.Term == 3
+	// b.Term == 3
+	// c.Term == 1
+	sm = dynamic_cast<testRaft*>(nt->peers[1].get());
+	BOOST_REQUIRE_EQUAL(sm->m_Term, 3);
+
+	sm = dynamic_cast<testRaft*>(nt->peers[2].get());
+	BOOST_REQUIRE_EQUAL(sm->m_Term, 3);
+
+	sm = dynamic_cast<testRaft*>(nt->peers[3].get());
+	BOOST_REQUIRE_EQUAL(sm->m_Term, 1);
+
+	// check state
+	// a == follower
+	// b == leader
+	// c == pre-candidate
+	sm = dynamic_cast<testRaft*>(nt->peers[1].get());
+	BOOST_REQUIRE_EQUAL(sm->m_state, StateFollower);
+	sm = dynamic_cast<testRaft*>(nt->peers[2].get());
+	BOOST_REQUIRE_EQUAL(sm->m_state, StateLeader);
+	sm = dynamic_cast<testRaft*>(nt->peers[3].get());
+	BOOST_REQUIRE_EQUAL(sm->m_state, StatePreCandidate);
+
+	iLog(sm->m_logger, "going to bring back peer 3 and kill peer 2");
+	// recover the network then immediately isolate b which is currently
+	// the leader, this is to emulate the crash of b.
+	nt->recover();
+	nt->cut(2, 1);
+	nt->cut(2, 3);
+
+	// call for election
+	nt->send(make_message(3, 3, MsgHup));
+	nt->send(make_message(1, 1, MsgHup));
+
+	// do we have a leader?
+	auto sma = dynamic_cast<testRaft*>(nt->peers[1].get());
+	auto smb = dynamic_cast<testRaft*>(nt->peers[3].get());
+	BOOST_REQUIRE_EQUAL(sma->m_state == StateLeader || smb->m_state == StateLeader, true);
+}
+
+// TestPreVoteWithSplitVote verifies that after split vote, cluster can complete
+// election in next round.
+BOOST_AUTO_TEST_CASE(TestPreVoteWithSplitVote) {
+	auto n1 = newTestRaft(1, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
+	auto n2 = newTestRaft(2, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
+	auto n3 = newTestRaft(3, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
+
+	n1->becomeFollower(1, None);
+	n2->becomeFollower(1, None);
+	n3->becomeFollower(1, None);
+
+	n1->m_preVote = true;
+	n2->m_preVote = true;
+	n3->m_preVote = true;
+
+	auto nt = newNetwork({ n1, n2, n3 });
+	nt->send(make_message(1, 1, MsgHup));
+
+	// simulate leader down. followers start split vote.
+	nt->isolate(1);
+	list<MessagePtr> msgs;
+	msgs.emplace_back(make_message(2, 2, MsgHup));
+	msgs.emplace_back(make_message(3, 3, MsgHup));
+	nt->send(msgs);
+
+	// check whether the term values are expected
+	// n2.Term == 3
+	// n3.Term == 3
+	auto sm = dynamic_cast<testRaft*>(nt->peers[2].get());
+	BOOST_REQUIRE_EQUAL(sm->m_Term, 3);
+	sm = dynamic_cast<testRaft*>(nt->peers[3].get());
+	BOOST_REQUIRE_EQUAL(sm->m_Term, 3);
+
+	// check state
+	// n2 == candidate
+	// n3 == candidate
+	sm = dynamic_cast<testRaft*>(nt->peers[2].get());
+	BOOST_REQUIRE_EQUAL(sm->m_state, StateCandidate);
+	sm = dynamic_cast<testRaft*>(nt->peers[3].get());
+	BOOST_REQUIRE_EQUAL(sm->m_state, StateCandidate);
+
+	// node 2 election timeout first
+	nt->send(make_message(2, 2, MsgHup));
+
+	// check whether the term values are expected
+	// n2.Term == 4
+	// n3.Term == 4
+	sm = dynamic_cast<testRaft*>(nt->peers[2].get());
+	BOOST_REQUIRE_EQUAL(sm->m_Term, 4);
+	sm = dynamic_cast<testRaft*>(nt->peers[3].get());
+	BOOST_REQUIRE_EQUAL(sm->m_Term, 4);
+
+	// check state
+	// n2 == leader
+	// n3 == follower
+	sm = dynamic_cast<testRaft*>(nt->peers[2].get());
+	BOOST_REQUIRE_EQUAL(sm->m_state, StateLeader);
+	sm = dynamic_cast<testRaft*>(nt->peers[3].get());
+	BOOST_REQUIRE_EQUAL(sm->m_state, StateFollower);
+}
+
+networkptr newPreVoteMigrationCluster();
+BOOST_AUTO_TEST_CASE(TestPreVoteMigrationCanCompleteElection) {
+	auto nt = newPreVoteMigrationCluster();
+
+	// n1 is leader with term 2
+	// n2 is follower with term 2
+	// n3 is pre-candidate with term 4, and less log
+	auto n2 = dynamic_cast<testRaft*>(nt->peers[2].get());
+	auto n3 = dynamic_cast<testRaft*>(nt->peers[3].get());
+
+	// simulate leader down
+	nt->isolate(1);
+
+	// Call for elections from both n2 and n3.
+	nt->send(make_message(3, 3, MsgHup));
+	nt->send(make_message(2, 2, MsgHup));
+
+	// check state
+	// n2.state == Follower
+	// n3.state == PreCandidate
+	BOOST_REQUIRE_EQUAL(n2->m_state, StateFollower);
+	BOOST_REQUIRE_EQUAL(n3->m_state, StatePreCandidate);
+
+	nt->send(make_message(3, 3, MsgHup));
+	nt->send(make_message(2, 2, MsgHup));
+
+	// Do we have a leader?
+	BOOST_REQUIRE_EQUAL(n2->m_state != StateLeader && n3->m_state != StateFollower, false);
+}
+
+BOOST_AUTO_TEST_CASE(TestPreVoteMigrationWithFreeStuckPreCandidate) {
+	auto nt = newPreVoteMigrationCluster();
+
+	// n1 is leader with term 2
+	// n2 is follower with term 2
+	// n3 is pre-candidate with term 4, and less log
+	auto n1 = dynamic_cast<testRaft*>(nt->peers[1].get());
+	auto n2 = dynamic_cast<testRaft*>(nt->peers[2].get());
+	auto n3 = dynamic_cast<testRaft*>(nt->peers[3].get());
+
+	nt->send(make_message(3, 3, MsgHup));
+	BOOST_REQUIRE_EQUAL(n1->m_state, StateLeader);
+	BOOST_REQUIRE_EQUAL(n2->m_state, StateFollower);
+	BOOST_REQUIRE_EQUAL(n3->m_state, StatePreCandidate);
+
+	// Pre-Vote again for safety
+	nt->send(make_message(3, 3, MsgHup));
+	BOOST_REQUIRE_EQUAL(n1->m_state, StateLeader);
+	BOOST_REQUIRE_EQUAL(n2->m_state, StateFollower);
+	BOOST_REQUIRE_EQUAL(n3->m_state, StatePreCandidate);
+
+	nt->send(make_message(1, 3, MsgHeartbeat, 0, n1->m_Term));
+
+	// Disrupt the leader so that the stuck peer is freed
+	BOOST_REQUIRE_EQUAL(n1->m_state, StateFollower);
+	BOOST_REQUIRE_EQUAL(n3->m_Term, n1->m_Term);
+}
+#endif
 TestRaftPtr entsWithConfig(void (*configFunc)(Config&), const vector<uint64_t> &terms) {
 	auto storage = std::make_shared<MemoryStorage>();
 	for (size_t i = 0; i < terms.size(); i++) {
@@ -2384,4 +3553,82 @@ void testCandidateResetTerm(MessageType mt) {
 
 	// follower c term is reset with leader's
 	BOOST_REQUIRE_EQUAL(a->m_Term, c->m_Term);
+}
+
+void mustAppendEntry(testRaft *r, vector<Entry> &&ents) {
+	if (!r->appendEntry(ents)) {
+		BOOST_THROW_EXCEPTION(std::runtime_error("entry unexpectedly dropped"));
+	}
+}
+
+void testCampaignWhileLeader(bool preVote) {
+	auto cfg = newTestConfig(1, { 1 }, 5, 1, std::make_shared<MemoryStorage>());
+	cfg.PreVote = preVote;
+	auto r = std::make_unique<testRaft>(cfg);
+	BOOST_REQUIRE_EQUAL(r->m_state, StateFollower);
+	// We don't call campaign() directly because it comes after the check
+	// for our current state.
+	r->Step(*make_message(1, 1, MsgHup));
+	BOOST_REQUIRE_EQUAL(r->m_state, StateLeader);
+	auto term = r->m_Term;
+	r->Step(*make_message(1, 1, MsgHup));
+	BOOST_REQUIRE_EQUAL(r->m_state, StateLeader);
+	BOOST_REQUIRE_EQUAL(r->m_Term, term);
+}
+
+void checkLeaderTransferState(testRaft *r, StateType state, uint64_t lead) {
+	BOOST_REQUIRE_EQUAL(r->m_state, state);
+	BOOST_REQUIRE_EQUAL(r->m_lead, lead);
+	BOOST_REQUIRE_EQUAL(r->m_leadTransferee, None);
+}
+
+// simulate rolling update a cluster for Pre-Vote. cluster has 3 nodes [n1, n2, n3].
+// n1 is leader with term 2
+// n2 is follower with term 2
+// n3 is partitioned, with term 4 and less log, state is candidate
+networkptr newPreVoteMigrationCluster() {
+	auto n1 = newTestRaft(1, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
+	auto n2 = newTestRaft(2, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
+	auto n3 = newTestRaft(3, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
+
+	n1->becomeFollower(1, None);
+	n2->becomeFollower(1, None);
+	n3->becomeFollower(1, None);
+
+	n1->m_preVote = true;
+	n2->m_preVote = true;
+	// We intentionally do not enable PreVote for n3, this is done so in order
+	// to simulate a rolling restart process where it's possible to have a mixed
+	// version cluster with replicas with PreVote enabled, and replicas without.
+
+	auto nt = newNetwork({ n1, n2, n3 });
+	nt->send(make_message(1, 1, MsgHup));
+
+	// Cause a network partition to isolate n3.
+	nt->isolate(3);
+	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0, 0, "some data") }));
+	nt->send(make_message(3, 3, MsgHup));
+	nt->send(make_message(3, 3, MsgHup));
+
+	// check state
+	// n1.state == StateLeader
+	// n2.state == StateFollower
+	// n3.state == StateCandidate
+	BOOST_REQUIRE_EQUAL(n1->m_state, StateLeader);
+	BOOST_REQUIRE_EQUAL(n2->m_state, StateFollower);
+	BOOST_REQUIRE_EQUAL(n3->m_state, StateCandidate);
+
+	// check term
+	// n1.Term == 2
+	// n2.Term == 2
+	// n3.Term == 4
+	BOOST_REQUIRE_EQUAL(n1->m_Term, 2);
+	BOOST_REQUIRE_EQUAL(n2->m_Term, 2);
+	BOOST_REQUIRE_EQUAL(n3->m_Term, 4);
+
+	// Enable prevote on n3, then recover the network
+	n3->m_preVote = true;
+	nt->recover();
+
+	return nt;
 }

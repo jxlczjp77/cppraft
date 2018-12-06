@@ -8,11 +8,12 @@ struct doexit {
 	}
 } t;
 
-Entry makeEntry(uint64_t index, uint64_t term, string &&data) {
+Entry makeEntry(uint64_t index, uint64_t term, string &&data, EntryType type) {
 	Entry tmp;
 	tmp.set_index(index);
 	tmp.set_term(term);
 	tmp.set_data(std::move(data));
+	tmp.set_type(type);
 	return tmp;
 }
 
@@ -30,6 +31,19 @@ unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries,
 	u.m_offset = offset;
 	u.m_logger = &logger;
 	return std::move(u);
+}
+
+MessagePtr make_message(uint64_t from, uint64_t to, MessageType type, uint64_t index, uint64_t term, bool reject, vector<Entry> &&ents) {
+	MessagePtr msg = make_unique<Message>();
+	msg->set_from(from);
+	msg->set_to(to);
+	msg->set_type(type);
+	msg->set_term(term);
+	msg->set_reject(reject);
+	msg->set_index(index);
+	auto dd = msg->mutable_entries();
+	for (auto &ent : ents) *dd->Add() = ent;
+	return std::move(msg);
 }
 
 void equal_entrys(const vector<Entry> &left, const vector<Entry> &right) {
@@ -61,5 +75,12 @@ string diffu(const string &a, const string &b) {
 		return "";
 	}
 	return "diff: \n" + a + "\n" + b + "\n";
+}
+
+uint64_t mustTerm(uint64_t term, ErrorCode err) {
+	if (!SUCCESS(err)) {
+		abort();
+	}
+	return term;
 }
 
