@@ -271,13 +271,13 @@ namespace raft {
 		bool pastElectionTimeout();
 		void delProgress(uint64_t id);
 		bool restore(const Snapshot &s);
+		void loadState(const HardState &state);
 
 	private:
 		bool increaseUncommittedSize(const vector<Entry> &ents);
 		void forEachProgress(const std::function<void(uint64_t id, Progress *pr)> &f);
 		void restoreNode(vector<uint64_t> &nodes, bool isLearner);
 		void sendHeartbeat(uint64_t to, const string &ctx);
-		void loadState(const HardState &state);
 		void addNodeOrLearnerNode(uint64_t id, bool isLearner);
 	};
 

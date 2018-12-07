@@ -33,7 +33,18 @@ unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries,
 	return std::move(u);
 }
 
-MessagePtr make_message(uint64_t from, uint64_t to, MessageType type, uint64_t index, uint64_t term, bool reject, vector<Entry> &&ents) {
+MessagePtr make_message(
+	uint64_t from,
+	uint64_t to,
+	MessageType type,
+	uint64_t index,
+	uint64_t term,
+	bool reject,
+	vector<Entry> &&ents,
+	uint64_t logterm,
+	uint64_t commit,
+	uint64_t wrejectHint
+) {
 	MessagePtr msg = make_unique<Message>();
 	msg->set_from(from);
 	msg->set_to(to);
@@ -41,6 +52,9 @@ MessagePtr make_message(uint64_t from, uint64_t to, MessageType type, uint64_t i
 	msg->set_term(term);
 	msg->set_reject(reject);
 	msg->set_index(index);
+	msg->set_logterm(logterm);
+	msg->set_commit(commit);
+	msg->set_rejecthint(wrejectHint);
 	auto dd = msg->mutable_entries();
 	for (auto &ent : ents) *dd->Add() = ent;
 	return std::move(msg);
@@ -84,3 +98,10 @@ uint64_t mustTerm(uint64_t term, ErrorCode err) {
 	return term;
 }
 
+vector<uint64_t> idsBySize(size_t size) {
+	vector<uint64_t> ids(size);
+	for (size_t i = 0; i < size; i++) {
+		ids[i] = 1 + uint64_t(i);
+	}
+	return ids;
+}

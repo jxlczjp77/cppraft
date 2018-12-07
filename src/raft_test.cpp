@@ -6,7 +6,7 @@
 #include <boost/random/uniform_real.hpp>
 #include <boost/random/variate_generator.hpp>
 #include <boost/format.hpp>
-#define DISABLE_RAFT_TEST
+// #define DISABLE_RAFT_TEST
 
 using namespace raft;
 using namespace raftpb;
@@ -60,11 +60,11 @@ int PayloadSize(const Entry &e) {
 stateMachinePtr nopStepper = std::make_unique<blackHole>();
 
 networkptr newNetworkWithConfig(void(*configFunc)(Config &), const vector<stateMachinePtr> &peers);
-networkptr newNetwork(const vector<stateMachinePtr> &peers);
 template<class TRaftPtr> void setRandomizedElectionTimeout(TRaftPtr &r, int v);
 
-TestRaftPtr newTestRaft(uint64_t id, vector<uint64_t> &&peers, int election, int heartbeat, StoragePtr storage) {
+TestRaftPtr newTestRaft(uint64_t id, vector<uint64_t> &&peers, int election, int heartbeat, StoragePtr storage, Logger *Logger) {
 	auto config = newTestConfig(id, std::move(peers), election, heartbeat, storage);
+	config.Logger = Logger;
 	return std::make_shared<testRaft>(config);
 }
 
@@ -3145,14 +3145,6 @@ void testLeaderElection(bool preVote) {
 
 void preVoteConfig(Config &c) {
 	c.PreVote = true;
-}
-
-vector<uint64_t> idsBySize(size_t size) {
-	vector<uint64_t> ids(size);
-	for (size_t i = 0; i < size; i++) {
-		ids[i] = 1 + uint64_t(i);
-	}
-	return ids;
 }
 
 // newNetworkWithConfig is like newNetwork but calls the given func to

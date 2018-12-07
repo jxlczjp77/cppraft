@@ -1,7 +1,7 @@
 ﻿#include <raft/Storage.hpp>
 
 namespace raft {
-	MemoryStorage::MemoryStorage() : m_entries{ Entry() } {
+	MemoryStorage::MemoryStorage(const vector<Entry> &ents) : m_entries(ents) {
 	}
 
 	MemoryStorage::~MemoryStorage() {
@@ -23,13 +23,15 @@ namespace raft {
 		if (m_entries.size() == 1) { // 仅包含dumy entry
 			return ErrUnavailable;
 		}
-		size_t byteCount = 0;
-		for (size_t i = lo - offset, end = hi - offset; i < end; i++) {
-			out.push_back(m_entries[i]);
+		size_t i = lo - offset, end = hi - offset;
+		size_t byteCount = m_entries[i].ByteSize();
+		out.push_back(m_entries[i]);
+		for (i++; i < end; i++) {
 			byteCount += m_entries[i].ByteSize();
-			if (byteCount >= max_size) {
+			if (byteCount > max_size) {
 				break;
 			}
+			out.push_back(m_entries[i]);
 		}
 		return OK;
 	}
@@ -130,6 +132,7 @@ namespace raft {
 			*m_snapshot.mutable_metadata()->mutable_conf_state() = *cs;
 		}
 		m_snapshot.set_data(data);
+		sh = m_snapshot;
 		return OK;
 	}
 

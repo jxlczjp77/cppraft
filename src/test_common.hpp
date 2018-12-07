@@ -17,6 +17,7 @@ unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries,
 string ltoa(raft_log *l);
 string diffu(const string &a, const string &b);
 uint64_t mustTerm(uint64_t term, ErrorCode err);
+vector<uint64_t> idsBySize(size_t size);
 
 struct stateMachine {
 	virtual ErrorCode Step(Message &m) = 0;
@@ -68,6 +69,18 @@ struct network {
 	vector<MessagePtr> filter(vector<MessagePtr> &&msgs);
 };
 typedef std::unique_ptr<network> networkptr;
-
-TestRaftPtr newTestRaft(uint64_t id, vector<uint64_t> &&peers, int election, int heartbeat, StoragePtr storage);
-MessagePtr make_message(uint64_t from, uint64_t to, MessageType type, uint64_t index = 0, uint64_t term = 0, bool reject = false, vector<Entry> &&ents = vector<Entry>());
+extern stateMachinePtr nopStepper;
+TestRaftPtr newTestRaft(uint64_t id, vector<uint64_t> &&peers, int election, int heartbeat, StoragePtr storage, Logger *Logger = nullptr);
+networkptr newNetwork(const vector<stateMachinePtr> &peers);
+MessagePtr make_message(
+	uint64_t from,
+	uint64_t to,
+	MessageType type,
+	uint64_t index = 0,
+	uint64_t term = 0,
+	bool reject = false,
+	vector<Entry> &&ents = vector<Entry>(),
+	uint64_t logterm = 0,
+	uint64_t commit = 0,
+	uint64_t wrejectHint = 0
+);

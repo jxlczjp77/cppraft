@@ -17,7 +17,7 @@ namespace raft {
 
 	class MemoryStorage : public Storage {
 	public:
-		MemoryStorage();
+		MemoryStorage(const vector<Entry> &ents = { Entry() });
 		~MemoryStorage();
 
 		virtual ErrorCode InitialState(HardState &hs, ConfState &cs);
@@ -37,7 +37,7 @@ namespace raft {
 		uint64_t firstIndex();
 		uint64_t lastIndex();
 
-	private:
+	public:
 		HardState m_hard_state;
 		Snapshot m_snapshot;
 		std::vector<Entry> m_entries;
