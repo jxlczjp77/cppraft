@@ -135,39 +135,39 @@ namespace raft {
 			std::copy(cs.nodes().begin(), cs.nodes().end(), std::back_inserter(peers));
 			std::copy(cs.learners().begin(), cs.learners().end(), std::back_inserter(learners));
 		}
-		m_id = c.ID;
-		m_lead = None;
-		m_isLearner = false;
-		m_raftLog = std::move(raftlog);
-		m_maxMsgSize = c.MaxSizePerMsg;
-		m_maxInflight = c.MaxInflightMsgs;
-		m_maxUncommittedSize = c.MaxUncommittedEntriesSize;
-		m_electionTimeout = c.ElectionTick;
-		m_heartbeatTimeout = c.HeartbeatTick;
-		m_logger = c.Logger;
-		m_checkQuorum = c.CheckQuorum;
-		m_preVote = c.PreVote;
-		m_readOnly = std::make_unique<readOnly>(c.ReadOnlyOption);
-		m_disableProposalForwarding = c.DisableProposalForwarding;
-		m_Term = 0;
-		m_Vote = 0;
+		id = c.ID;
+		lead = None;
+		isLearner = false;
+		raftLog = std::move(raftlog);
+		maxMsgSize = c.MaxSizePerMsg;
+		maxInflight = c.MaxInflightMsgs;
+		maxUncommittedSize = c.MaxUncommittedEntriesSize;
+		electionTimeout = c.ElectionTick;
+		heartbeatTimeout = c.HeartbeatTick;
+		logger = c.Logger;
+		checkQuorum = c.CheckQuorum;
+		preVote = c.PreVote;
+		readOnly = std::make_unique<ReadOnly>(c.ReadOnlyOption);
+		disableProposalForwarding = c.DisableProposalForwarding;
+		Term = 0;
+		Vote = 0;
 		for (auto p : peers) {
 			auto progress = std::make_unique<Progress>();
 			progress->Next = 1;
-			progress->ins = std::make_unique<inflights>(m_maxInflight);
-			m_prs[p] = std::move(progress);
+			progress->ins = std::make_unique<inflights>(maxInflight);
+			prs[p] = std::move(progress);
 		}
 		for (auto p : learners) {
-			if (m_prs.find(p) != m_prs.end()) {
+			if (prs.find(p) != prs.end()) {
 				BOOST_THROW_EXCEPTION(std::runtime_error((boost::format("node %1% is in both learner and peer list") % p).str()));
 			}
 			auto progress = std::make_unique<Progress>();
 			progress->Next = 1;
-			progress->ins = std::make_unique<inflights>(m_maxInflight);
+			progress->ins = std::make_unique<inflights>(maxInflight);
 			progress->IsLearner = true;
-			m_learnerPrs[p] = std::move(progress);
-			if (m_id == p) {
-				m_isLearner = true;
+			learnerPrs[p] = std::move(progress);
+			if (id == p) {
+				isLearner = true;
 			}
 		}
 
@@ -175,160 +175,160 @@ namespace raft {
 			loadState(hs);
 		}
 		if (c.Applied > 0) {
-			m_raftLog->appliedTo(c.Applied);
+			raftLog->appliedTo(c.Applied);
 		}
-		becomeFollower(m_Term, None);
+		becomeFollower(Term, None);
 
 		vector<string> nodesStrs;
 		for (auto n : nodes()) {
 			nodesStrs.push_back((boost::format("%X") % n).str());
 		}
 		string nodesStr = boost::join(nodesStrs, ",");
-		iLog(m_logger, "newRaft %1% [peers: [%2%], term: %3%, commit: %4%, applied: %5%, lastindex: %6%, lastterm: %7%]",
-			m_id, nodesStr.c_str(), m_Term, m_raftLog->m_committed, m_raftLog->m_applied, m_raftLog->lastIndex(), m_raftLog->lastTerm());
+		iLog(logger, "newRaft %1% [peers: [%2%], term: %3%, commit: %4%, applied: %5%, lastindex: %6%, lastterm: %7%]",
+			id, nodesStr.c_str(), Term, raftLog->committed, raftLog->applied, raftLog->lastIndex(), raftLog->lastTerm());
 	}
 
 	void Raft::becomeFollower(uint64_t term, uint64_t lead) {
-		m_step = stepFollower;
+		step = stepFollower;
 		reset(term);
-		m_tick = [&]() { tickElection(); };
-		m_lead = lead;
-		m_state = StateFollower;
-		iLog(m_logger, "%1% became follower at term %2%", m_id, m_Term);
+		tick = [&]() { tickElection(); };
+		lead = lead;
+		state = StateFollower;
+		iLog(logger, "%1% became follower at term %2%", id, Term);
 	}
 
 	void Raft::becomeCandidate() {
 		// TODO(xiangli) remove the panic when the Raft implementation is stable
-		if (m_state == StateLeader) {
+		if (state == StateLeader) {
 			BOOST_THROW_EXCEPTION(std::runtime_error("invalid transition [leader -> candidate]"));
 		}
-		m_step = stepCandidate;
-		reset(m_Term + 1);
-		m_tick = [&]() { tickElection(); };
-		m_Vote = m_id;
-		m_state = StateCandidate;
-		iLog(m_logger, "%1% became candidate at term %2%", m_id, m_Term);
+		step = stepCandidate;
+		reset(Term + 1);
+		tick = [&]() { tickElection(); };
+		Vote = id;
+		state = StateCandidate;
+		iLog(logger, "%1% became candidate at term %2%", id, Term);
 	}
 
 	void Raft::becomePreCandidate() {
 		// TODO(xiangli) remove the panic when the Raft implementation is stable
-		if (m_state == StateLeader) {
+		if (state == StateLeader) {
 			BOOST_THROW_EXCEPTION(std::runtime_error("invalid transition [leader -> pre-candidate]"));
 		}
 		// Becoming a pre-candidate changes our step functions and state,
 		// but doesn't change anything else. In particular it does not increase
 		// r.Term or change r.Vote.
-		m_step = stepCandidate;
-		m_votes.clear();
-		m_tick = [&]() { tickElection(); };
-		m_state = StatePreCandidate;
-		iLog(m_logger, "%1% became pre-candidate at term %2%", m_id, m_Term);
+		step = stepCandidate;
+		votes.clear();
+		tick = [&]() { tickElection(); };
+		state = StatePreCandidate;
+		iLog(logger, "%1% became pre-candidate at term %2%", id, Term);
 	}
 
 	void Raft::becomeLeader() {
 		// TODO(xiangli) remove the panic when the Raft implementation is stable
-		if (m_state == StateFollower) {
+		if (state == StateFollower) {
 			BOOST_THROW_EXCEPTION(std::runtime_error("invalid transition [follower -> leader]"));
 		}
-		m_step = stepLeader;
-		reset(m_Term);
-		m_tick = [&]() { tickHeartbeat(); };
-		m_lead = m_id;
-		m_state = StateLeader;
+		step = stepLeader;
+		reset(Term);
+		tick = [&]() { tickHeartbeat(); };
+		lead = id;
+		state = StateLeader;
 		// Followers enter replicate mode when they've been successfully probed
 		// (perhaps after having received a snapshot as a result). The leader is
 		// trivially in this state. Note that r.reset() has initialized this
 		// progress with the last index already.
-		m_prs[m_id]->becomeReplicate();
+		prs[id]->becomeReplicate();
 
 		// Conservatively set the pendingConfIndex to the last index in the
 		// log. There may or may not be a pending config change, but it's
 		// safe to delay any future proposals until we commit all our
 		// pending log entries, and scanning the entire tail of the log
 		// could be expensive.
-		m_pendingConfIndex = m_raftLog->lastIndex();
+		pendingConfIndex = raftLog->lastIndex();
 
 		std::vector<Entry> emptyEnt(1);
 		if (!appendEntry(emptyEnt)) {
 			// This won't happen because we just called reset() above.
-			fLog(m_logger, "empty entry was dropped");
+			fLog(logger, "empty entry was dropped");
 		}
 		// As a special case, don't count the initial empty entry towards the
 		// uncommitted log quota. This is because we want to preserve the
 		// behavior of allowing one entry larger than quota if the current
 		// usage is zero.
 		reduceUncommittedSize(emptyEnt);
-		iLog(m_logger, "%1% became leader at term %2%", m_id, m_Term);
+		iLog(logger, "%1% became leader at term %2%", id, Term);
 	}
 
 	ErrorCode stepFollower(Raft *r, Message &m) {
 		switch (m.type()) {
 		case MsgProp: {
-			if (r->m_lead == None) {
-				iLog(r->m_logger, "%1% no leader at term %2%; dropping proposal", r->m_id, r->m_Term);
+			if (r->lead == None) {
+				iLog(r->logger, "%1% no leader at term %2%; dropping proposal", r->id, r->Term);
 				return ErrProposalDropped;
-			} else if (r->m_disableProposalForwarding) {
-				iLog(r->m_logger, "%1% not forwarding to leader %2% at term %3%; dropping proposal", r->m_id, r->m_lead, r->m_Term);
+			} else if (r->disableProposalForwarding) {
+				iLog(r->logger, "%1% not forwarding to leader %2% at term %3%; dropping proposal", r->id, r->lead, r->Term);
 				return ErrProposalDropped;
 			}
-			m.set_to(r->m_lead);
+			m.set_to(r->lead);
 			r->send(std::make_unique<Message>(m));
 			break;
 		}
 		case MsgApp: {
-			r->m_electionElapsed = 0;
-			r->m_lead = m.from();
+			r->electionElapsed = 0;
+			r->lead = m.from();
 			r->handleAppendEntries(m);
 			break;
 		}
 		case MsgHeartbeat: {
-			r->m_electionElapsed = 0;
-			r->m_lead = m.from();
+			r->electionElapsed = 0;
+			r->lead = m.from();
 			r->handleHeartbeat(m);
 			break;
 		}
 		case MsgSnap: {
-			r->m_electionElapsed = 0;
-			r->m_lead = m.from();
+			r->electionElapsed = 0;
+			r->lead = m.from();
 			r->handleSnapshot(m);
 			break;
 		}
 		case MsgTransferLeader: {
-			if (r->m_lead == None) {
-				iLog(r->m_logger, "%1% no leader at term %2%; dropping leader transfer msg", r->m_id, r->m_Term);
+			if (r->lead == None) {
+				iLog(r->logger, "%1% no leader at term %2%; dropping leader transfer msg", r->id, r->Term);
 				return OK;
 			}
-			m.set_to(r->m_lead);
+			m.set_to(r->lead);
 			r->send(std::make_unique<Message>(m));
 			break;
 		}
 		case MsgTimeoutNow: {
 			if (r->promotable()) {
-				iLog(r->m_logger, "%1% [term %2%] received MsgTimeoutNow from %3% and starts an election to get leadership.", r->m_id, r->m_Term, m.from());
+				iLog(r->logger, "%1% [term %2%] received MsgTimeoutNow from %3% and starts an election to get leadership.", r->id, r->Term, m.from());
 				// Leadership transfers never use pre-vote even if r.preVote is true; we
 				// know we are not recovering from a partition so there is no need for the
 				// extra round trip.
 				r->campaign(campaignTransfer);
 			} else {
-				iLog(r->m_logger, "%1% received MsgTimeoutNow from %2% but is not promotable", r->m_id, m.from());
+				iLog(r->logger, "%1% received MsgTimeoutNow from %2% but is not promotable", r->id, m.from());
 			}
 			break;
 		}
 		case MsgReadIndex: {
-			if (r->m_lead == None) {
-				iLog(r->m_logger, "%1% no leader at term %2%; dropping index reading msg", r->m_id, r->m_Term);
+			if (r->lead == None) {
+				iLog(r->logger, "%1% no leader at term %2%; dropping index reading msg", r->id, r->Term);
 				return OK;
 			}
-			m.set_to(r->m_lead);
+			m.set_to(r->lead);
 			r->send(std::make_unique<Message>(m));
 			break;
 		}
 		case MsgReadIndexResp: {
 			if (m.entries().size() != 1) {
-				eLog(r->m_logger, "%1% invalid format of MsgReadIndexResp from %2%, entries count: %3%", r->m_id, m.from(), m.entries().size());
+				eLog(r->logger, "%1% invalid format of MsgReadIndexResp from %2%, entries count: %3%", r->id, m.from(), m.entries().size());
 				return OK;
 			}
-			r->m_readStates.push_back(ReadState{ m.index(), m.entries(0).data() });
+			r->readStates.push_back(ReadState{ m.index(), m.entries(0).data() });
 			break;
 		}
 		}
@@ -341,7 +341,7 @@ namespace raft {
 		// StateCandidate, we may get stale MsgPreVoteResp messages in this term from
 		// our pre-candidate state).
 		MessageType myVoteRespType;
-		if (r->m_state == StatePreCandidate) {
+		if (r->state == StatePreCandidate) {
 			myVoteRespType = MsgPreVoteResp;
 		} else {
 			myVoteRespType = MsgVoteResp;
@@ -349,7 +349,7 @@ namespace raft {
 		switch (m.type()) {
 		case MsgProp:
 		{
-			iLog(r->m_logger, "%1% no leader at term %2%; dropping proposal", r->m_id, r->m_Term);
+			iLog(r->logger, "%1% no leader at term %2%; dropping proposal", r->id, r->Term);
 			return ErrProposalDropped;
 		}
 		case MsgApp:
@@ -376,25 +376,25 @@ namespace raft {
 			if (myVoteRespType != m.type())
 				break;
 			auto gr = r->poll(m.from(), m.type(), !m.reject());
-			iLog(r->m_logger, "%1% [quorum:%2%] has received %3% %4% votes and %5% vote rejections", r->m_id, r->quorum(), gr, m.type(), r->m_votes.size() - gr);
+			iLog(r->logger, "%1% [quorum:%2%] has received %3% %4% votes and %5% vote rejections", r->id, r->quorum(), gr, m.type(), r->votes.size() - gr);
 			int quorum = r->quorum();
 			if (quorum == gr) {
-				if (r->m_state == StatePreCandidate) {
+				if (r->state == StatePreCandidate) {
 					r->campaign(campaignElection);
 				} else {
 					r->becomeLeader();
 					r->bcastAppend();
 				}
-			} else if (quorum == r->m_votes.size() - gr) {
+			} else if (quorum == r->votes.size() - gr) {
 				// pb.MsgPreVoteResp contains future term of pre-candidate
 				// m.Term > r.Term; reuse r.Term
-				r->becomeFollower(r->m_Term, None);
+				r->becomeFollower(r->Term, None);
 			}
 			break;
 		}
 		case MsgTimeoutNow:
 		{
-			dLog(r->m_logger, "%1% [term %2% state %3%] ignored MsgTimeoutNow from %4%", r->m_id, r->m_Term, r->m_state, m.from());
+			dLog(r->logger, "%1% [term %2% state %3%] ignored MsgTimeoutNow from %4%", r->id, r->Term, r->state, m.from());
 			break;
 		}
 		}
@@ -412,38 +412,38 @@ namespace raft {
 		case MsgCheckQuorum:
 		{
 			if (!r->checkQuorumActive()) {
-				wLog(r->m_logger, "%1% stepped down to follower since quorum is not active", r->m_id);
-				r->becomeFollower(r->m_Term, None);
+				wLog(r->logger, "%1% stepped down to follower since quorum is not active", r->id);
+				r->becomeFollower(r->Term, None);
 			}
 			return OK;
 		}
 		case MsgProp:
 		{
 			if (m.entries().empty()) {
-				fLog(r->m_logger, "%1% stepped empty MsgProp", r->m_id);
+				fLog(r->logger, "%1% stepped empty MsgProp", r->id);
 			}
-			if (r->m_prs.find(r->m_id) == r->m_prs.end()) {
+			if (r->prs.find(r->id) == r->prs.end()) {
 				// If we are not currently a member of the range (i.e. this node
 				// was removed from the configuration while serving as leader),
 				// drop any new proposals.
 				return ErrProposalDropped;
 			}
-			if (r->m_leadTransferee != None) {
-				dLog(r->m_logger, "%1% [term %2%] transfer leadership to %3% is in progress; dropping proposal", r->m_id, r->m_Term, r->m_leadTransferee);
+			if (r->leadTransferee != None) {
+				dLog(r->logger, "%1% [term %2%] transfer leadership to %3% is in progress; dropping proposal", r->id, r->Term, r->leadTransferee);
 				return ErrProposalDropped;
 			}
 
 			for (int i = 0; i < m.entries().size(); i++) {
 				auto &e = m.entries(i);
 				if (e.type() == EntryConfChange) {
-					if (r->m_pendingConfIndex > r->m_raftLog->m_applied) {
-						iLog(r->m_logger, "propose conf %1% ignored since pending unapplied configuration [index %2%, applied %3%]",
-							entryString(e).c_str(), r->m_pendingConfIndex, r->m_raftLog->m_applied);
+					if (r->pendingConfIndex > r->raftLog->applied) {
+						iLog(r->logger, "propose conf %1% ignored since pending unapplied configuration [index %2%, applied %3%]",
+							entryString(e).c_str(), r->pendingConfIndex, r->raftLog->applied);
 						Entry ent;
 						ent.set_type(EntryNormal);
 						*m.mutable_entries(i) = ent;
 					} else {
-						r->m_pendingConfIndex = r->m_raftLog->lastIndex() + uint64_t(i) + 1;
+						r->pendingConfIndex = r->raftLog->lastIndex() + uint64_t(i) + 1;
 					}
 				}
 			}
@@ -460,8 +460,8 @@ namespace raft {
 		{
 			if (r->quorum() > 1) {
 				uint64_t t;
-				auto err = r->m_raftLog->term(r->m_raftLog->m_committed, t);
-				if (r->m_raftLog->zeroTermOnErrCompacted(t, err) != r->m_Term) {
+				auto err = r->raftLog->term(r->raftLog->committed, t);
+				if (r->raftLog->zeroTermOnErrCompacted(t, err) != r->Term) {
 					// Reject read only request when this leader has not committed any log entry at its term.
 					return OK;
 				}
@@ -469,17 +469,17 @@ namespace raft {
 				// thinking: use an interally defined context instead of the user given context.
 				// We can express this in terms of the term and index instead of a user-supplied value.
 				// This would allow multiple reads to piggyback on the same message.
-				switch (r->m_readOnly->option) {
+				switch (r->readOnly->option) {
 				case ReadOnlySafe:
 				{
-					r->m_readOnly->addRequest(r->m_raftLog->m_committed, m);
+					r->readOnly->addRequest(r->raftLog->committed, m);
 					r->bcastHeartbeatWithCtx(m.entries(0).data());
 					break;
 				}
 				case ReadOnlyLeaseBased:
-					uint64_t ri = r->m_raftLog->m_committed;
-					if (m.from() == None || m.from() == r->m_id) { // from local member
-						r->m_readStates.push_back(ReadState{ r->m_raftLog->m_committed, m.entries(0).data() });
+					uint64_t ri = r->raftLog->committed;
+					if (m.from() == None || m.from() == r->id) { // from local member
+						r->readStates.push_back(ReadState{ r->raftLog->committed, m.entries(0).data() });
 					} else {
 						auto msg = make_message(m.from(), MsgReadIndexResp);
 						msg->set_index(ri);
@@ -489,7 +489,7 @@ namespace raft {
 					break;
 				}
 			} else {
-				r->m_readStates.push_back(ReadState{ r->m_raftLog->m_committed, m.entries(0).data() });
+				r->readStates.push_back(ReadState{ r->raftLog->committed, m.entries(0).data() });
 			}
 			return OK;
 		}
@@ -497,7 +497,7 @@ namespace raft {
 		// All other message types require a progress for m.From (pr).
 		auto pr = r->getProgress(m.from());
 		if (!pr) {
-			dLog(r->m_logger, "%1% no progress available for %2%", r->m_id, m.from());
+			dLog(r->logger, "%1% no progress available for %2%", r->id, m.from());
 			return OK;
 		}
 		switch (m.type()) {
@@ -506,10 +506,10 @@ namespace raft {
 			pr->RecentActive = true;
 
 			if (m.reject()) {
-				dLog(r->m_logger, "%1% received msgApp rejection(lastindex: %2%) from %3% for index %4%",
-					r->m_id, m.rejecthint(), m.from(), m.index());
+				dLog(r->logger, "%1% received msgApp rejection(lastindex: %2%) from %3% for index %4%",
+					r->id, m.rejecthint(), m.from(), m.index());
 				if (pr->maybeDecrTo(m.index(), m.rejecthint())) {
-					dLog(r->m_logger, "%1% decreased progress of %2% to [%3%]", r->m_id, m.from(), pr->to_string());
+					dLog(r->logger, "%1% decreased progress of %2% to [%3%]", r->id, m.from(), pr->to_string());
 					if (pr->State == ProgressStateReplicate) {
 						pr->becomeProbe();
 					}
@@ -524,7 +524,7 @@ namespace raft {
 						break;
 					case ProgressStateSnapshot:
 						if (pr->needSnapshotAbort()) {
-							dLog(r->m_logger, "%1% snapshot aborted, resumed sending replication messages to %2% [%3%]", r->m_id, m.from(), pr->to_string());
+							dLog(r->logger, "%1% snapshot aborted, resumed sending replication messages to %2% [%3%]", r->id, m.from(), pr->to_string());
 							pr->becomeProbe();
 						}
 						break;
@@ -549,8 +549,8 @@ namespace raft {
 					for (; r->maybeSendAppend(m.from(), false);) {
 					}
 					// Transfer leadership is in progress.
-					if (m.from() == r->m_leadTransferee && pr->Match == r->m_raftLog->lastIndex()) {
-						iLog(r->m_logger, "%1% sent MsgTimeoutNow to %2% after received MsgAppResp", r->m_id, m.from());
+					if (m.from() == r->leadTransferee && pr->Match == r->raftLog->lastIndex()) {
+						iLog(r->logger, "%1% sent MsgTimeoutNow to %2% after received MsgAppResp", r->id, m.from());
 						r->sendTimeoutNow(m.from());
 					}
 				}
@@ -566,25 +566,25 @@ namespace raft {
 			if (pr->State == ProgressStateReplicate && pr->ins->full()) {
 				pr->ins->freeFirstOne();
 			}
-			if (pr->Match < r->m_raftLog->lastIndex()) {
+			if (pr->Match < r->raftLog->lastIndex()) {
 				r->sendAppend(m.from());
 			}
 
-			if (r->m_readOnly->option != ReadOnlySafe || m.context().empty()) {
+			if (r->readOnly->option != ReadOnlySafe || m.context().empty()) {
 				return OK;
 			}
 
-			auto ackCount = r->m_readOnly->recvAck(m);
+			auto ackCount = r->readOnly->recvAck(m);
 			if (ackCount < r->quorum()) {
 				return OK;
 			}
 
 			std::vector<readIndexStatusPtr> rss;
-			r->m_readOnly->advance(m, rss);
+			r->readOnly->advance(m, rss);
 			for (auto &rs : rss) {
 				auto &req = rs->req;
-				if (req.from() == None || req.from() == r->m_id) { // from local member
-					r->m_readStates.push_back(ReadState{ rs->index, req.entries(0).data() });
+				if (req.from() == None || req.from() == r->id) { // from local member
+					r->readStates.push_back(ReadState{ rs->index, req.entries(0).data() });
 				} else {
 					auto msg = make_message(req.from(), MsgReadIndexResp);
 					msg->set_index(rs->index);
@@ -601,11 +601,11 @@ namespace raft {
 			}
 			if (!m.reject()) {
 				pr->becomeProbe();
-				dLog(r->m_logger, "%1% snapshot succeeded, resumed sending replication messages to %2% [%3%]", r->m_id, m.from(), pr->to_string());
+				dLog(r->logger, "%1% snapshot succeeded, resumed sending replication messages to %2% [%3%]", r->id, m.from(), pr->to_string());
 			} else {
 				pr->snapshotFailure();
 				pr->becomeProbe();
-				dLog(r->m_logger, "%1% snapshot failed, resumed sending replication messages to %2% [%3%]", r->m_id, m.from(), pr->to_string());
+				dLog(r->logger, "%1% snapshot failed, resumed sending replication messages to %2% [%3%]", r->id, m.from(), pr->to_string());
 			}
 			// If snapshot finish, wait for the msgAppResp from the remote node before sending
 			// out the next msgApp.
@@ -620,38 +620,38 @@ namespace raft {
 			if (pr->State == ProgressStateReplicate) {
 				pr->becomeProbe();
 			}
-			dLog(r->m_logger, "%1% failed to send message to %2% because it is unreachable [%3%]", r->m_id, m.from(), pr->to_string());
+			dLog(r->logger, "%1% failed to send message to %2% because it is unreachable [%3%]", r->id, m.from(), pr->to_string());
 			break;
 		}
 		case MsgTransferLeader:
 		{
 			if (pr->IsLearner) {
-				dLog(r->m_logger, "%1% is learner. Ignored transferring leadership", r->m_id);
+				dLog(r->logger, "%1% is learner. Ignored transferring leadership", r->id);
 				return OK;
 			}
 			uint64_t leadTransferee = m.from();
-			uint64_t lastLeadTransferee = r->m_leadTransferee;
+			uint64_t lastLeadTransferee = r->leadTransferee;
 			if (lastLeadTransferee != None) {
 				if (lastLeadTransferee == leadTransferee) {
-					iLog(r->m_logger, "%1% [term %2%] transfer leadership to %3% is in progress, ignores request to same node %4%",
-						r->m_id, r->m_Term, leadTransferee, leadTransferee);
+					iLog(r->logger, "%1% [term %2%] transfer leadership to %3% is in progress, ignores request to same node %4%",
+						r->id, r->Term, leadTransferee, leadTransferee);
 					return OK;
 				}
 				r->abortLeaderTransfer();
-				iLog(r->m_logger, "%1% [term %2%] abort previous transferring leadership to %3%", r->m_id, r->m_Term, lastLeadTransferee);
+				iLog(r->logger, "%1% [term %2%] abort previous transferring leadership to %3%", r->id, r->Term, lastLeadTransferee);
 			}
-			if (leadTransferee == r->m_id) {
-				dLog(r->m_logger, "%1% is already leader. Ignored transferring leadership to self", r->m_id);
+			if (leadTransferee == r->id) {
+				dLog(r->logger, "%1% is already leader. Ignored transferring leadership to self", r->id);
 				return OK;
 			}
 			// Transfer leadership to third party.
-			iLog(r->m_logger, "%1% [term %2%] starts to transfer leadership to %3%", r->m_id, r->m_Term, leadTransferee);
+			iLog(r->logger, "%1% [term %2%] starts to transfer leadership to %3%", r->id, r->Term, leadTransferee);
 			// Transfer leadership should be finished in one electionTimeout, so reset r.electionElapsed.
-			r->m_electionElapsed = 0;
-			r->m_leadTransferee = leadTransferee;
-			if (pr->Match == r->m_raftLog->lastIndex()) {
+			r->electionElapsed = 0;
+			r->leadTransferee = leadTransferee;
+			if (pr->Match == r->raftLog->lastIndex()) {
 				r->sendTimeoutNow(leadTransferee);
-				iLog(r->m_logger, "%1% sends MsgTimeoutNow to %2% immediately as %3% already has up-to-date log", r->m_id, leadTransferee, leadTransferee);
+				iLog(r->logger, "%1% sends MsgTimeoutNow to %2% immediately as %3% already has up-to-date log", r->id, leadTransferee, leadTransferee);
 			} else {
 				r->sendAppend(leadTransferee);
 			}
@@ -661,13 +661,13 @@ namespace raft {
 		return OK;
 	}
 
-	// tickElection is run by followers and candidates after m_electionTimeout.
+	// tickElection is run by followers and candidates after electionTimeout.
 	void Raft::tickElection() {
-		m_electionElapsed++;
+		electionElapsed++;
 		if (promotable() && pastElectionTimeout()) {
-			m_electionElapsed = 0;
+			electionElapsed = 0;
 			Message msg;
-			msg.set_from(m_id);
+			msg.set_from(id);
 			msg.set_type(MsgHup);
 			Step(msg);
 		}
@@ -676,29 +676,29 @@ namespace raft {
 	// promotable indicates whether state machine can be promoted to leader,
 	// which is true when its own id is in progress list.
 	bool Raft::promotable() {
-		return m_prs.find(m_id) != m_prs.end();
+		return prs.find(id) != prs.end();
 	}
 
-	// pastElectionTimeout returns true iff m_electionElapsed is greater
+	// pastElectionTimeout returns true iff electionElapsed is greater
 	// than or equal to the randomized election timeout in
 	// [electiontimeout, 2 * electiontimeout - 1].
 	bool Raft::pastElectionTimeout() {
-		return m_electionElapsed >= m_randomizedElectionTimeout;
+		return electionElapsed >= randomizedElectionTimeout;
 	}
 
 	ErrorCode Raft::Step(Message &m) {
 		// Handle the message term, which may result in our stepping down to a follower.
 		if (m.term() == 0) {
 			// local message
-		} else if (m.term() > m_Term) {
+		} else if (m.term() > Term) {
 			if (m.type() == MsgVote || m.type() == MsgPreVote) {
 				bool force = (m.context() == campaignTransfer);
-				bool inLease = m_checkQuorum && m_lead != None && m_electionElapsed < m_electionTimeout;
+				bool inLease = checkQuorum && lead != None && electionElapsed < electionTimeout;
 				if (!force && inLease) {
 					// If a server receives a RequestVote request within the minimum election timeout
 					// of hearing from a current leader, it does not update its term or grant its vote
-					iLog(m_logger, "%1% [logterm: %2%, index: %3%, vote: %4%] ignored %5% from %6% [logterm: %7%, index: %8%] at term %9%: lease is not expired (remaining ticks: %10%)",
-						m_id, m_raftLog->lastTerm(), m_raftLog->lastIndex(), m_Vote, m.type(), m.from(), m.logterm(), m.index(), m_Term, m_electionTimeout - m_electionElapsed);
+					iLog(logger, "%1% [logterm: %2%, index: %3%, vote: %4%] ignored %5% from %6% [logterm: %7%, index: %8%] at term %9%: lease is not expired (remaining ticks: %10%)",
+						id, raftLog->lastTerm(), raftLog->lastIndex(), Vote, m.type(), m.from(), m.logterm(), m.index(), Term, electionTimeout - electionElapsed);
 					return OK;
 				}
 			}
@@ -711,16 +711,16 @@ namespace raft {
 				// rejected our vote so we should become a follower at the new
 				// term.
 			} else {
-				iLog(m_logger, "%1% [term: %2%] received a %3% message with higher term from %4% [term: %5%]",
-					m_id, m_Term, m.type(), m.from(), m.term());
+				iLog(logger, "%1% [term: %2%] received a %3% message with higher term from %4% [term: %5%]",
+					id, Term, m.type(), m.from(), m.term());
 				if (m.type() == MsgApp || m.type() == MsgHeartbeat || m.type() == MsgSnap) {
 					becomeFollower(m.term(), m.from());
 				} else {
 					becomeFollower(m.term(), None);
 				}
 			}
-		} else if (m.term() < m_Term) {
-			if ((m_checkQuorum || m_preVote) && (m.type() == MsgHeartbeat || m.type() == MsgApp)) {
+		} else if (m.term() < Term) {
+			if ((checkQuorum || preVote) && (m.type() == MsgHeartbeat || m.type() == MsgApp)) {
 				// We have received messages from a leader at a lower term. It is possible
 				// that these messages were simply delayed in the network, but this could
 				// also mean that this node has advanced its term number during a network
@@ -747,61 +747,61 @@ namespace raft {
 				// Before Pre-Vote enable, there may have candidate with higher term,
 				// but less log. After update to Pre-Vote, the cluster may deadlock if
 				// we drop messages with a lower term.
-				iLog(m_logger, "%1% [logterm: %2%, index: %3%, vote: %4%] rejected %5% from %6% [logterm: %7%, index: %8%] at term %9%",
-					m_id, m_raftLog->lastTerm(), m_raftLog->lastIndex(), m_Vote, m.type(), m.from(), m.logterm(), m.index(), m_Term);
-				send(make_message(m.from(), MsgPreVoteResp, m_Term, true));
+				iLog(logger, "%1% [logterm: %2%, index: %3%, vote: %4%] rejected %5% from %6% [logterm: %7%, index: %8%] at term %9%",
+					id, raftLog->lastTerm(), raftLog->lastIndex(), Vote, m.type(), m.from(), m.logterm(), m.index(), Term);
+				send(make_message(m.from(), MsgPreVoteResp, Term, true));
 			} else {
 				// ignore other cases
-				iLog(m_logger, "%1% [term: %2%] ignored a %3% message with lower term from %4% [term: %5%]",
-					m_id, m_Term, m.type(), m.from(), m.term());
+				iLog(logger, "%1% [term: %2%] ignored a %3% message with lower term from %4% [term: %5%]",
+					id, Term, m.type(), m.from(), m.term());
 			}
 			return OK;
 		}
 		switch (m.type()) {
 		case MsgHup:
 		{
-			if (m_state != StateLeader) {
+			if (state != StateLeader) {
 				vector<Entry> ents;
-				auto err = m_raftLog->slice(ents, m_raftLog->m_applied + 1, m_raftLog->m_committed + 1, noLimit);
+				auto err = raftLog->slice(ents, raftLog->applied + 1, raftLog->committed + 1, noLimit);
 				if (!SUCCESS(err)) {
-					fLog(m_logger, "unexpected error getting unapplied entries (%1%)", err);
+					fLog(logger, "unexpected error getting unapplied entries (%1%)", err);
 				}
 				int n = numOfPendingConf(ents);
-				if (n != 0 && m_raftLog->m_committed > m_raftLog->m_applied) {
-					wLog(m_logger, "%1% cannot campaign at term %2% since there are still %3% pending configuration changes to apply", m_id, m_Term, n);
+				if (n != 0 && raftLog->committed > raftLog->applied) {
+					wLog(logger, "%1% cannot campaign at term %2% since there are still %3% pending configuration changes to apply", id, Term, n);
 					return OK;
 				}
 
-				iLog(m_logger, "%1% is starting a new election at term %2%", m_id, m_Term);
-				if (m_preVote) {
+				iLog(logger, "%1% is starting a new election at term %2%", id, Term);
+				if (preVote) {
 					campaign(campaignPreElection);
 				} else {
 					campaign(campaignElection);
 				}
 			} else {
-				dLog(m_logger, "%1% ignoring MsgHup because already leader", m_id);
+				dLog(logger, "%1% ignoring MsgHup because already leader", id);
 			}
 			break;
 		}
 		case MsgVote:
 		case MsgPreVote:
 		{
-			if (m_isLearner) {
+			if (isLearner) {
 				// TODO: learner may need to vote, in case of node down when confchange.
-				iLog(m_logger, "%1% [logterm: %2%, index: %3%, vote: %4%] ignored %5% from %6% [logterm: %7%, index: %8%] at term %9%: learner can not vote",
-					m_id, m_raftLog->lastTerm(), m_raftLog->lastIndex(), m_Vote, m.type(), m.from(), m.logterm(), m.index(), m_Term);
+				iLog(logger, "%1% [logterm: %2%, index: %3%, vote: %4%] ignored %5% from %6% [logterm: %7%, index: %8%] at term %9%: learner can not vote",
+					id, raftLog->lastTerm(), raftLog->lastIndex(), Vote, m.type(), m.from(), m.logterm(), m.index(), Term);
 				return OK;
 			}
 			// We can vote if this is a repeat of a vote we've already cast...
-			bool canVote = m_Vote == m.from() ||
+			bool canVote = Vote == m.from() ||
 				// ...we haven't voted and we don't think there's a leader yet in this term...
-				(m_Vote == None && m_lead == None) ||
+				(Vote == None && lead == None) ||
 				// ...or this is a PreVote for a future term...
-				(m.type() == MsgPreVote && m.term() > m_Term);
+				(m.type() == MsgPreVote && m.term() > Term);
 			// ...and we believe the candidate is up to date.
-			if (canVote && m_raftLog->isUpToDate(m.index(), m.logterm())) {
-				iLog(m_logger, "%1% [logterm: %2%, index: %3%, vote: %4%] cast %5% for %6% [logterm: %7%, index: %8%] at term %9%",
-					m_id, m_raftLog->lastTerm(), m_raftLog->lastIndex(), m_Vote, m.type(), m.from(), m.logterm(), m.index(), m_Term);
+			if (canVote && raftLog->isUpToDate(m.index(), m.logterm())) {
+				iLog(logger, "%1% [logterm: %2%, index: %3%, vote: %4%] cast %5% for %6% [logterm: %7%, index: %8%] at term %9%",
+					id, raftLog->lastTerm(), raftLog->lastIndex(), Vote, m.type(), m.from(), m.logterm(), m.index(), Term);
 				// When responding to Msg{Pre,}Vote messages we include the term
 				// from the message, not the local term. To see why consider the
 				// case where a single node was previously partitioned away and
@@ -814,19 +814,19 @@ namespace raft {
 				send(make_message(m.from(), voteRespMsgType(m.type()), m.term()));
 				if (m.type() == MsgVote) {
 					// Only record real votes.
-					m_electionElapsed = 0;
-					m_Vote = m.from();
+					electionElapsed = 0;
+					Vote = m.from();
 				}
 			} else {
-				iLog(m_logger, "%1% [logterm: %2%, index: %3%, vote: %4%] rejected %5% from %6% [logterm: %7%, index: %8%] at term %9%",
-					m_id, m_raftLog->lastTerm(), m_raftLog->lastIndex(), m_Vote, m.type(), m.from(), m.logterm(), m.index(), m_Term);
-				send(make_message(m.from(), voteRespMsgType(m.type()), m_Term, true));
+				iLog(logger, "%1% [logterm: %2%, index: %3%, vote: %4%] rejected %5% from %6% [logterm: %7%, index: %8%] at term %9%",
+					id, raftLog->lastTerm(), raftLog->lastIndex(), Vote, m.type(), m.from(), m.logterm(), m.index(), Term);
+				send(make_message(m.from(), voteRespMsgType(m.type()), Term, true));
 			}
 			break;
 		}
 		default:
 		{
-			auto err = m_step(this, m);
+			auto err = step(this, m);
 			if (!SUCCESS(err)) {
 				return err;
 			}
@@ -838,7 +838,7 @@ namespace raft {
 
 	// send persists state to stable storage and then sends to its mailbox.
 	void Raft::send(MessagePtr &&m) {
-		m->set_from(m_id);
+		m->set_from(id);
 		if (m->type() == MsgVote || m->type() == MsgVoteResp || m->type() == MsgPreVote || m->type() == MsgPreVoteResp) {
 			if (m->term() == 0) {
 				// All {pre-,}campaign messages need to have the term set when
@@ -853,21 +853,21 @@ namespace raft {
 				// - MsgPreVoteResp: m.Term is the term received in the original
 				//   MsgPreVote if the pre-vote was granted, non-zero for the
 				//   same reasons MsgPreVote is
-				fLog(m_logger, "term should be set when sending %1%", m->type());
+				fLog(logger, "term should be set when sending %1%", m->type());
 			}
 		} else {
 			if (m->term() != 0) {
-				fLog(m_logger, "term should not be set when sending %1% (was %2%)", m->type(), m->term());
+				fLog(logger, "term should not be set when sending %1% (was %2%)", m->type(), m->term());
 			}
 			// do not attach term to MsgProp, MsgReadIndex
 			// proposals are a way to forward to the leader and
 			// should be treated as local message.
 			// MsgReadIndex is also forwarded to leader.
 			if (m->type() != MsgProp && m->type() != MsgReadIndex) {
-				m->set_term(m_Term);
+				m->set_term(Term);
 			}
 		}
-		m_msgs.emplace(m_msgs.end(), std::move(m));
+		msgs.emplace(msgs.end(), std::move(m));
 	}
 
 	void Raft::campaign(CampaignType t) {
@@ -877,13 +877,13 @@ namespace raft {
 			becomePreCandidate();
 			voteMsg = MsgPreVote;
 			// PreVote RPCs are sent for the next term before we've incremented r.Term.
-			term = m_Term + 1;
+			term = Term + 1;
 		} else {
 			becomeCandidate();
 			voteMsg = MsgVote;
-			term = m_Term;
+			term = Term;
 		}
-		if (quorum() == poll(m_id, voteRespMsgType(voteMsg), true)) {
+		if (quorum() == poll(id, voteRespMsgType(voteMsg), true)) {
 			// We won the election after voting for ourselves (which must mean that
 			// this is a single-node cluster). Advance to the next state.
 			if (t == campaignPreElection) {
@@ -893,39 +893,39 @@ namespace raft {
 			}
 			return;
 		}
-		for (auto it = m_prs.begin(); it != m_prs.end(); ++it) {
-			if (it->first == m_id) {
+		for (auto it = prs.begin(); it != prs.end(); ++it) {
+			if (it->first == id) {
 				continue;
 			}
-			iLog(m_logger, "%1% [logterm: %2%, index: %3%] sent %4% request to %5% at term %6%",
-				m_id, m_raftLog->lastTerm(), m_raftLog->lastIndex(), voteMsg, it->first, m_Term);
+			iLog(logger, "%1% [logterm: %2%, index: %3%] sent %4% request to %5% at term %6%",
+				id, raftLog->lastTerm(), raftLog->lastIndex(), voteMsg, it->first, Term);
 
 			string ctx;
 			if (t == campaignTransfer) {
 				ctx = t;
 			}
 			MessagePtr msg = make_message(it->first, voteMsg, term);
-			msg->set_index(m_raftLog->lastIndex());
-			msg->set_logterm(m_raftLog->lastTerm());
+			msg->set_index(raftLog->lastIndex());
+			msg->set_logterm(raftLog->lastTerm());
 			msg->set_context(ctx);
 			send(std::move(msg));
 		}
 	}
 
-	int Raft::quorum() { return int(m_prs.size() / 2 + 1); }
+	int Raft::quorum() { return int(prs.size() / 2 + 1); }
 
 	int Raft::poll(uint64_t id, MessageType t, bool v) {
 		int granted = 0;
 		if (v) {
-			iLog(m_logger, "%1% received %2% from %3% at term %4%", m_id, t, id, m_Term);
+			iLog(logger, "%1% received %2% from %3% at term %4%", id, t, id, Term);
 		} else {
-			iLog(m_logger, "%1% received %2% rejection from %3% at term %4%", m_id, t, id, m_Term);
+			iLog(logger, "%1% received %2% rejection from %3% at term %4%", id, t, id, Term);
 		}
-		auto it = m_votes.find(id);
-		if (it == m_votes.end()) {
-			m_votes[id] = v;
+		auto it = votes.find(id);
+		if (it == votes.end()) {
+			votes[id] = v;
 		}
-		for (auto it = m_votes.begin(); it != m_votes.end(); ++it) {
+		for (auto it = votes.begin(); it != votes.end(); ++it) {
 			if (it->second) {
 				granted++;
 			}
@@ -934,100 +934,100 @@ namespace raft {
 	}
 
 	void Raft::reset(uint64_t term) {
-		if (m_Term != term) {
-			m_Term = term;
-			m_Vote = None;
+		if (Term != term) {
+			Term = term;
+			Vote = None;
 		}
-		m_lead = None;
+		lead = None;
 
-		m_electionElapsed = 0;
-		m_heartbeatElapsed = 0;
+		electionElapsed = 0;
+		heartbeatElapsed = 0;
 		resetRandomizedElectionTimeout();
 
 		abortLeaderTransfer();
 
-		m_votes.clear();
+		votes.clear();
 		forEachProgress([&](uint64_t id, Progress *pr) {
-			pr->Next = m_raftLog->lastIndex() + 1;
-			pr->ins.reset(new inflights(m_maxInflight));
-			if (id == m_id) {
-				pr->Match = m_raftLog->lastIndex();
+			pr->Next = raftLog->lastIndex() + 1;
+			pr->ins.reset(new inflights(maxInflight));
+			if (id == this->id) {
+				pr->Match = raftLog->lastIndex();
 			}
 		});
 
-		m_pendingConfIndex = 0;
-		m_uncommittedSize = 0;
-		m_readOnly.reset(new readOnly(m_readOnly->option));
+		pendingConfIndex = 0;
+		uncommittedSize = 0;
+		readOnly.reset(new ReadOnly(readOnly->option));
 	}
 	boost::mt19937 gen;
 	void Raft::resetRandomizedElectionTimeout() {
-		boost::random::uniform_int_distribution<> dist(0, m_electionTimeout - 1);
-		m_randomizedElectionTimeout = m_electionTimeout + dist(gen);
+		boost::random::uniform_int_distribution<> dist(0, electionTimeout - 1);
+		randomizedElectionTimeout = electionTimeout + dist(gen);
 	}
 
 	void Raft::abortLeaderTransfer() {
-		m_leadTransferee = None;
+		leadTransferee = None;
 	}
 
 	void Raft::forEachProgress(const std::function<void(uint64_t id, Progress *pr)> &f) {
-		for (auto it = m_prs.begin(); it != m_prs.end(); ++it) {
+		for (auto it = prs.begin(); it != prs.end(); ++it) {
 			f(it->first, it->second.get());
 		}
 
-		for (auto it = m_learnerPrs.begin(); it != m_learnerPrs.end(); ++it) {
+		for (auto it = learnerPrs.begin(); it != learnerPrs.end(); ++it) {
 			f(it->first, it->second.get());
 		}
 	}
 
 	// tickHeartbeat is run by leaders to send a MsgBeat after r.heartbeatTimeout.
 	void Raft::tickHeartbeat() {
-		m_heartbeatElapsed++;
-		m_electionElapsed++;
+		heartbeatElapsed++;
+		electionElapsed++;
 
-		if (m_electionElapsed >= m_electionTimeout) {
-			m_electionElapsed = 0;
-			if (m_checkQuorum) {
+		if (electionElapsed >= electionTimeout) {
+			electionElapsed = 0;
+			if (checkQuorum) {
 				Message msg;
 				msg.set_type(MsgCheckQuorum);
-				msg.set_from(m_id);
+				msg.set_from(id);
 				Step(msg);
 			}
 			// If current leader cannot transfer leadership in electionTimeout, it becomes leader again.
-			if (m_state == StateLeader && m_leadTransferee != None) {
+			if (state == StateLeader && leadTransferee != None) {
 				abortLeaderTransfer();
 			}
 		}
 
-		if (m_state != StateLeader) {
+		if (state != StateLeader) {
 			return;
 		}
 
-		if (m_heartbeatElapsed >= m_heartbeatTimeout) {
-			m_heartbeatElapsed = 0;
+		if (heartbeatElapsed >= heartbeatTimeout) {
+			heartbeatElapsed = 0;
 			Message msg;
 			msg.set_type(MsgBeat);
-			msg.set_from(m_id);
+			msg.set_from(id);
 			Step(msg);
 		}
 	}
 
 	bool Raft::appendEntry(vector<Entry> &es) {
-		uint64_t li = m_raftLog->lastIndex();
+		uint64_t li = raftLog->lastIndex();
 		for (size_t i = 0; i < es.size(); ++i) {
-			es[i].set_term(m_Term);
+			es[i].set_term(Term);
 			es[i].set_index(li + 1 + uint64_t(i));
 		}
 		// Track the size of this uncommitted proposal.
 		if (!increaseUncommittedSize(es)) {
-			dLog(m_logger,
+			dLog(logger,
 				"%1% appending new entries to log would exceed uncommitted entry size limit; dropping proposal",
-				m_id);
+				id);
 			// Drop the proposal.
 			return false;
 		}
 		// use latest "last" index after truncate/append
-		li = m_raftLog->append(es);
-		getProgress(m_id)->maybeUpdate(li);
+		li = raftLog->append(es);
+		getProgress(id)->maybeUpdate(li);
 		// Regardless of maybeCommit's return, our caller will call bcastAppend.
 		maybeCommit();
 		return true;
@@ -1044,23 +1044,23 @@ namespace raft {
 			s += uint64_t(PayloadSize(e));
 		}
 
-		if (m_uncommittedSize > 0 && m_uncommittedSize + s > m_maxUncommittedSize) {
+		if (uncommittedSize > 0 && uncommittedSize + s > maxUncommittedSize) {
 			// If the uncommitted tail of the Raft log is empty, allow any size
 			// proposal. Otherwise, limit the size of the uncommitted tail of the
 			// log and drop any proposal that would push the size over the limit.
 			return false;
 		}
-		m_uncommittedSize += s;
+		uncommittedSize += s;
 		return true;
 	}
 
 	Progress *Raft::getProgress(uint64_t id) {
-		auto it = m_prs.find(id);
-		if (it != m_prs.end()) {
+		auto it = prs.find(id);
+		if (it != prs.end()) {
 			return it->second.get();
 		}
-		auto it1 = m_learnerPrs.find(id);
-		if (it1 != m_learnerPrs.end()) {
+		auto it1 = learnerPrs.find(id);
+		if (it1 != learnerPrs.end()) {
 			return it1->second.get();
 		}
 		return nullptr;
@@ -1072,23 +1072,23 @@ namespace raft {
 	bool Raft::maybeCommit() {
 		// Preserving matchBuf across calls is an optimization
 		// used to avoid allocating a new slice on each call.
-		if (m_matchBuf.capacity() < m_prs.size()) {
-			m_matchBuf.resize(m_prs.size());
+		if (matchBuf.capacity() < prs.size()) {
+			matchBuf.resize(prs.size());
 		}
-		m_matchBuf.resize(m_prs.size());
+		matchBuf.resize(prs.size());
 		int idx = 0;
-		for (auto it = m_prs.begin(); it != m_prs.end(); ++it) {
-			m_matchBuf[idx++] = it->second->Match;
+		for (auto it = prs.begin(); it != prs.end(); ++it) {
+			matchBuf[idx++] = it->second->Match;
 		}
-		sort(m_matchBuf.begin(), m_matchBuf.end());
-		uint64_t mci = m_matchBuf[m_matchBuf.size() - quorum()];
-		return m_raftLog->maybeCommit(mci, m_Term);
+		sort(matchBuf.begin(), matchBuf.end());
+		uint64_t mci = matchBuf[matchBuf.size() - quorum()];
+		return raftLog->maybeCommit(mci, Term);
 	}
 
 	// reduceUncommittedSize accounts for the newly committed entries by decreasing
 	// the uncommitted entry size limit.
 	void Raft::reduceUncommittedSize(const vector<Entry> &ents) {
-		if (m_uncommittedSize == 0) {
+		if (uncommittedSize == 0) {
 			// Fast-path for followers, who do not track or enforce the limit.
 			return;
 		}
@@ -1097,20 +1097,20 @@ namespace raft {
 		for (auto &e : ents) {
 			s += uint64_t(PayloadSize(e));
 		}
-		if (s > m_uncommittedSize) {
+		if (s > uncommittedSize) {
 			// uncommittedSize may underestimate the size of the uncommitted Raft
 			// log tail but will never overestimate it. Saturate at 0 instead of
 			// allowing overflow.
-			m_uncommittedSize = 0;
+			uncommittedSize = 0;
 		} else {
-			m_uncommittedSize -= s;
+			uncommittedSize -= s;
 		}
 	}
 
 	void Raft::handleAppendEntries(const Message &m) {
-		if (m.index() < m_raftLog->m_committed) {
+		if (m.index() < raftLog->committed) {
 			MessagePtr msg = make_message(m.from(), MsgAppResp);
-			msg->set_index(m_raftLog->m_committed);
+			msg->set_index(raftLog->committed);
 			send(std::move(msg));
 			return;
 		}
@@ -1120,25 +1120,25 @@ namespace raft {
 		ents.reserve(m.entries().size());
 		for (auto it = m.entries().begin(); it < m.entries().end(); it++)
 			ents.push_back(*it);
-		bool ret = m_raftLog->maybeAppend(m.index(), m.logterm(), m.commit(), ents, mlastIndex);
+		bool ret = raftLog->maybeAppend(m.index(), m.logterm(), m.commit(), ents, mlastIndex);
 		if (ret) {
 			MessagePtr msg = make_message(m.from(), MsgAppResp);
 			msg->set_index(mlastIndex);
 			send(std::move(msg));
 		} else {
 			uint64_t t;
-			auto err = m_raftLog->term(m.index(), t);
-			dLog(m_logger, "%1% [logterm: %2%, index: %3%] rejected msgApp [logterm: %4%, index: %5%] from %6%",
-				m_id, m_raftLog->zeroTermOnErrCompacted(t, err), m.index(), m.logterm(), m.index(), m.from());
+			auto err = raftLog->term(m.index(), t);
+			dLog(logger, "%1% [logterm: %2%, index: %3%] rejected msgApp [logterm: %4%, index: %5%] from %6%",
+				id, raftLog->zeroTermOnErrCompacted(t, err), m.index(), m.logterm(), m.index(), m.from());
 			MessagePtr msg = make_message(m.from(), MsgAppResp, 0, true);
 			msg->set_index(m.index());
-			msg->set_rejecthint(m_raftLog->lastIndex());
+			msg->set_rejecthint(raftLog->lastIndex());
 			send(std::move(msg));
 		}
 	}
 
 	void Raft::handleHeartbeat(Message &m) {
-		m_raftLog->commitTo(m.commit());
+		raftLog->commitTo(m.commit());
 		auto msg = make_message(m.from(), MsgHeartbeatResp);
 		msg->set_context(m.context());
 		send(std::move(msg));
@@ -1149,16 +1149,16 @@ namespace raft {
 		uint64_t sindex = metadata.index();
 		uint64_t sterm = metadata.term();
 		if (restore(m.snapshot())) {
-			iLog(m_logger, "%1% [commit: %2%] restored snapshot [index: %3%, term: %4%]",
-				m_id, m_raftLog->m_committed, sindex, sterm);
+			iLog(logger, "%1% [commit: %2%] restored snapshot [index: %3%, term: %4%]",
+				id, raftLog->committed, sindex, sterm);
 			auto msg = make_message(m.from(), MsgAppResp);
-			msg->set_index(m_raftLog->lastIndex());
+			msg->set_index(raftLog->lastIndex());
 			send(std::move(msg));
 		} else {
-			iLog(m_logger, "%1% [commit: %2%] ignored snapshot [index: %3%, term: %4%]",
-				m_id, m_raftLog->m_committed, sindex, sterm);
+			iLog(logger, "%1% [commit: %2%] ignored snapshot [index: %3%, term: %4%]",
+				id, raftLog->committed, sindex, sterm);
 			auto msg = make_message(m.from(), MsgAppResp);
-			msg->set_index(m_raftLog->m_committed);
+			msg->set_index(raftLog->committed);
 			send(std::move(msg));
 		}
 	}
@@ -1166,33 +1166,33 @@ namespace raft {
 	// restore recovers the state machine from a snapshot. It restores the log and the
 	// configuration of state machine.
 	bool Raft::restore(const Snapshot &s) {
-		if (s.metadata().index() <= m_raftLog->m_committed) {
+		if (s.metadata().index() <= raftLog->committed) {
 			return false;
 		}
-		if (m_raftLog->matchTerm(s.metadata().index(), s.metadata().term())) {
-			iLog(m_logger, "%1% [commit: %2%, lastindex: %3%, lastterm: %4%] fast-forwarded commit to snapshot [index: %5%, term: %6%]",
-				m_id, m_raftLog->m_committed, m_raftLog->lastIndex(), m_raftLog->lastTerm(), s.metadata().index(), s.metadata().term());
-			m_raftLog->commitTo(s.metadata().index());
+		if (raftLog->matchTerm(s.metadata().index(), s.metadata().term())) {
+			iLog(logger, "%1% [commit: %2%, lastindex: %3%, lastterm: %4%] fast-forwarded commit to snapshot [index: %5%, term: %6%]",
+				id, raftLog->committed, raftLog->lastIndex(), raftLog->lastTerm(), s.metadata().index(), s.metadata().term());
+			raftLog->commitTo(s.metadata().index());
 			return false;
 		}
 
 		// The normal peer can't become learner.
-		if (!m_isLearner) {
+		if (!isLearner) {
 			auto &learners = s.metadata().conf_state().learners();
 			for (auto it = learners.begin(); it != learners.end(); ++it) {
-				if (*it == m_id) {
-					eLog(m_logger, "%1% can't become learner when restores snapshot [index: %2%, term: %3%]", m_id, s.metadata().index(), s.metadata().term());
+				if (*it == id) {
+					eLog(logger, "%1% can't become learner when restores snapshot [index: %2%, term: %3%]", id, s.metadata().index(), s.metadata().term());
 					return false;
 				}
 			}
 		}
 
-		iLog(m_logger, "%1% [commit: %2%, lastindex: %3%, lastterm: %4%] starts to restore snapshot [index: %5%, term: %6%]",
-			m_id, m_raftLog->m_committed, m_raftLog->lastIndex(), m_raftLog->lastTerm(), s.metadata().index(), s.metadata().term());
+		iLog(logger, "%1% [commit: %2%, lastindex: %3%, lastterm: %4%] starts to restore snapshot [index: %5%, term: %6%]",
+			id, raftLog->committed, raftLog->lastIndex(), raftLog->lastTerm(), s.metadata().index(), s.metadata().term());
 
-		m_raftLog->restore(s);
-		m_prs.clear();
-		m_learnerPrs.clear();
+		raftLog->restore(s);
+		prs.clear();
+		learnerPrs.clear();
 		auto &nodes_ = s.metadata().conf_state().nodes();
 		auto &learners_ = s.metadata().conf_state().learners();
 		vector<uint64_t> nodes, learners;
@@ -1209,48 +1209,48 @@ namespace raft {
 
 	void Raft::restoreNode(vector<uint64_t> &nodes, bool isLearner) {
 		for (auto n : nodes) {
-			uint64_t match = 0, next = m_raftLog->lastIndex() + 1;
-			if (n == m_id) {
+			uint64_t match = 0, next = raftLog->lastIndex() + 1;
+			if (n == id) {
 				match = next - 1;
-				m_isLearner = isLearner;
+				this->isLearner = isLearner;
 			}
 			setProgress(n, match, next, isLearner);
-			iLog(m_logger, "%1% restored progress of %2% [%3%]", m_id, n, getProgress(n)->to_string());
+			iLog(logger, "%1% restored progress of %2% [%3%]", id, n, getProgress(n)->to_string());
 		}
 	}
 
 	void Raft::setProgress(uint64_t id, uint64_t match, uint64_t next, bool isLearner) {
 		if (!isLearner) {
-			m_learnerPrs.erase(id);
+			learnerPrs.erase(id);
 			auto progress = std::make_unique<Progress>();
 			progress->Next = next;
 			progress->Match = match;
-			progress->ins = std::make_unique<inflights>(m_maxInflight);
-			m_prs[id] = std::move(progress);
+			progress->ins = std::make_unique<inflights>(maxInflight);
+			prs[id] = std::move(progress);
 			return;
 		}
 
-		if (m_prs.find(id) != m_prs.end()) {
-			fLog(m_logger, "%1% unexpected changing from voter to learner for %2%", m_id, id);
+		if (prs.find(id) != prs.end()) {
+			fLog(logger, "%1% unexpected changing from voter to learner for %2%", this->id, id);
 		}
 		auto progress = std::make_unique<Progress>();
 		progress->Next = next;
 		progress->Match = match;
-		progress->ins = std::make_unique<inflights>(m_maxInflight);
+		progress->ins = std::make_unique<inflights>(maxInflight);
 		progress->IsLearner = true;
-		m_learnerPrs[id] = std::move(progress);
+		learnerPrs[id] = std::move(progress);
 	}
 
 	void Raft::delProgress(uint64_t id) {
-		m_prs.erase(id);
-		m_learnerPrs.erase(id);
+		prs.erase(id);
+		learnerPrs.erase(id);
 	}
 
 	// bcastAppend sends RPC, with entries to all peers that are not up-to-date
 	// according to the progress recorded in r.prs.
 	void Raft::bcastAppend() {
 		forEachProgress([&](uint64_t id, Progress *pr) {
-			if (id == m_id) {
+			if (id == this->id) {
 				return;
 			}
 			sendAppend(id);
@@ -1258,13 +1258,13 @@ namespace raft {
 	}
 	// bcastHeartbeat sends RPC, without entries to all the peers.
 	void Raft::bcastHeartbeat() {
-		auto lastCtx = m_readOnly->lastPendingRequestCtx();
+		auto lastCtx = readOnly->lastPendingRequestCtx();
 		bcastHeartbeatWithCtx(lastCtx);
 	}
 
 	void Raft::bcastHeartbeatWithCtx(const string &ctx) {
 		forEachProgress([&](uint64_t id, Progress *pr) {
-			if (id == m_id) {
+			if (id == this->id) {
 				return;
 			}
 			sendHeartbeat(id, ctx);
@@ -1279,7 +1279,7 @@ namespace raft {
 		// or it might not have all the committed entries.
 		// The leader MUST NOT forward the follower's commit to
 		// an unmatched index.
-		auto commit = min(getProgress(to)->Match, m_raftLog->m_committed);
+		auto commit = min(getProgress(to)->Match, raftLog->committed);
 		auto m = make_message(to, MsgHeartbeat);
 		m->set_commit(commit);
 		m->set_context(ctx);
@@ -1306,44 +1306,44 @@ namespace raft {
 
 		uint64_t term;
 		std::vector<Entry> ents;
-		auto errt = m_raftLog->term(pr->Next - 1, term);
-		auto erre = m_raftLog->entries(ents, pr->Next, m_maxMsgSize);
+		auto errt = raftLog->term(pr->Next - 1, term);
+		auto erre = raftLog->entries(ents, pr->Next, maxMsgSize);
 		if (ents.empty() && !sendIfEmpty) {
 			return false;
 		}
 
 		if (errt != OK || erre != OK) { // send snapshot if we failed to get term or entries
 			if (!pr->RecentActive) {
-				dLog(m_logger, "ignore sending snapshot to %1% since it is not recently active", to);
+				dLog(logger, "ignore sending snapshot to %1% since it is not recently active", to);
 				return false;
 			}
 
 			m->set_type(MsgSnap);
 			Snapshot *sn;
-			auto err = m_raftLog->snapshot(&sn);
+			auto err = raftLog->snapshot(&sn);
 			if (err != OK) {
 				if (err == ErrSnapshotTemporarilyUnavailable) {
-					dLog(m_logger, "%1% failed to send snapshot to %2% because snapshot is temporarily unavailable", m_id, to);
+					dLog(logger, "%1% failed to send snapshot to %2% because snapshot is temporarily unavailable", id, to);
 					return false;
 				}
 				abort(); // TODO(bdarnell)
 			}
 			if (IsEmptySnap(*sn)) {
-				fLog(m_logger, "need non-empty snapshot");
+				fLog(logger, "need non-empty snapshot");
 			}
 			*m->mutable_snapshot() = *sn;
 			uint64_t sindex = sn->metadata().index(), sterm = sn->metadata().term();
-			dLog(m_logger, "%1% [firstindex: %2%, commit: %3%] sent snapshot[index: %4%, term: %5%] to %6% [%7%]",
-				m_id, m_raftLog->firstIndex(), m_raftLog->m_committed, sindex, sterm, to, pr->to_string());
+			dLog(logger, "%1% [firstindex: %2%, commit: %3%] sent snapshot[index: %4%, term: %5%] to %6% [%7%]",
+				id, raftLog->firstIndex(), raftLog->committed, sindex, sterm, to, pr->to_string());
 			pr->becomeSnapshot(sindex);
-			dLog(m_logger, "%1% paused sending replication messages to %2% [%3%]", m_id, to, pr->to_string());
+			dLog(logger, "%1% paused sending replication messages to %2% [%3%]", id, to, pr->to_string());
 		} else {
 			m->set_type(MsgApp);
 			m->set_index(pr->Next - 1);
 			m->set_logterm(term);
 			auto ents_ = m->mutable_entries();
 			for (auto &ent : ents) *ents_->Add() = ent;
-			m->set_commit(m_raftLog->m_committed);
+			m->set_commit(raftLog->committed);
 			if (!ents.empty()) {
 				switch (pr->State) {
 					// optimistically increase the next when in ProgressStateReplicate
@@ -1361,7 +1361,7 @@ namespace raft {
 				}
 				default:
 				{
-					fLog(m_logger, "%1% is sending append in unhandled state %2%", m_id, pr->State);
+					fLog(logger, "%1% is sending append in unhandled state %2%", id, pr->State);
 					break;
 				}
 				}
@@ -1378,7 +1378,7 @@ namespace raft {
 	bool Raft::checkQuorumActive() {
 		int act = 0;
 		forEachProgress([&](uint64_t id, Progress *pr) {
-			if (id == m_id) { // self is always active
+			if (id == this->id) { // self is always active
 				act++;
 				return;
 			}
@@ -1398,18 +1398,18 @@ namespace raft {
 	}
 
 	void Raft::loadState(const HardState &state) {
-		if (state.commit() < m_raftLog->m_committed || state.commit() > m_raftLog->lastIndex()) {
-			fLog(m_logger, "%1% state.commit %2% is out of range [%3%, %4%]", m_id, state.commit(), m_raftLog->m_committed, m_raftLog->lastIndex());
+		if (state.commit() < raftLog->committed || state.commit() > raftLog->lastIndex()) {
+			fLog(logger, "%1% state.commit %2% is out of range [%3%, %4%]", id, state.commit(), raftLog->committed, raftLog->lastIndex());
 		}
-		m_raftLog->m_committed = state.commit();
-		m_Term = state.term();
-		m_Vote = state.vote();
+		raftLog->committed = state.commit();
+		Term = state.term();
+		Vote = state.vote();
 	}
 
 	vector<uint64_t> Raft::nodes() {
 		vector<uint64_t> nodes;
-		nodes.reserve(m_prs.size());
-		for (auto it = m_prs.begin(); it != m_prs.end(); ++it) {
+		nodes.reserve(prs.size());
+		for (auto it = prs.begin(); it != prs.end(); ++it) {
 			nodes.push_back(it->first);
 		}
 		std::sort(nodes.begin(), nodes.end());
@@ -1418,8 +1418,8 @@ namespace raft {
 
 	vector<uint64_t> Raft::learnerNodes() {
 		vector<uint64_t> nodes;
-		nodes.reserve(m_learnerPrs.size());
-		for (auto it = m_learnerPrs.begin(); it != m_learnerPrs.end(); ++it) {
+		nodes.reserve(learnerPrs.size());
+		for (auto it = learnerPrs.begin(); it != learnerPrs.end(); ++it) {
 			nodes.push_back(it->first);
 		}
 		std::sort(nodes.begin(), nodes.end());
@@ -1438,11 +1438,11 @@ namespace raft {
 	void Raft::addNodeOrLearnerNode(uint64_t id, bool isLearner) {
 		auto pr = getProgress(id);
 		if (!pr) {
-			setProgress(id, 0, m_raftLog->lastIndex() + 1, isLearner);
+			setProgress(id, 0, raftLog->lastIndex() + 1, isLearner);
 		} else {
 			if (isLearner && !pr->IsLearner) {
 				// can only change Learner to Voter
-				iLog(m_logger, "%1% ignored addLearner: do not support changing %2% from raft peer to learner.", m_id, id);
+				iLog(logger, "%1% ignored addLearner: do not support changing %2% from raft peer to learner.", id, id);
 				return;
 			}
 
@@ -1454,12 +1454,12 @@ namespace raft {
 
 			// change Learner to Voter, use origin Learner progress
 			pr->IsLearner = false;
-			m_prs[id] = std::move(m_learnerPrs[id]);
-			m_learnerPrs.erase(id);
+			prs[id] = std::move(learnerPrs[id]);
+			learnerPrs.erase(id);
 		}
 
-		if (m_id == id) {
-			m_isLearner = isLearner;
+		if (id == this->id) {
+			this->isLearner = isLearner;
 		}
 
 		// When a node is first added, we should mark it as recently active.
@@ -1473,7 +1473,7 @@ namespace raft {
 		delProgress(id);
 
 		// do not try to commit or abort transferring if there is no nodes in the cluster.
-		if (m_prs.empty() && m_learnerPrs.empty()) {
+		if (prs.empty() && learnerPrs.empty()) {
 			return;
 		}
 
@@ -1483,7 +1483,7 @@ namespace raft {
 			bcastAppend();
 		}
 		// If the removed node is the leadTransferee, then abort the leadership transferring.
-		if (m_state == StateLeader && m_leadTransferee == id) {
+		if (state == StateLeader && leadTransferee == id) {
 			abortLeaderTransfer();
 		}
 	}

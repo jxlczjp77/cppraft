@@ -7,11 +7,11 @@ namespace raft {
 	class Storage {
 	public:
 		virtual ErrorCode InitialState(HardState &hs, ConfState &cs) = 0;
-		virtual ErrorCode entries(uint64_t lo, uint64_t hi, uint64_t max_size, vector<Entry> &out) = 0;
-		virtual ErrorCode term(uint64_t i, uint64_t &t) = 0;
-		virtual ErrorCode last_index(uint64_t &i) = 0;
-		virtual ErrorCode first_index(uint64_t &i) = 0;
-		virtual ErrorCode snapshot(Snapshot **sn) = 0;
+		virtual ErrorCode Entries(uint64_t lo, uint64_t hi, uint64_t max_size, vector<Entry> &out) = 0;
+		virtual ErrorCode Term(uint64_t i, uint64_t &t) = 0;
+		virtual ErrorCode LastIndex(uint64_t &i) = 0;
+		virtual ErrorCode FirstIndex(uint64_t &i) = 0;
+		virtual ErrorCode Snapshot(Snapshot **sn) = 0;
 	};
 	typedef std::shared_ptr<Storage> StoragePtr;
 
@@ -21,15 +21,15 @@ namespace raft {
 		~MemoryStorage();
 
 		virtual ErrorCode InitialState(HardState &hs, ConfState &cs);
-		virtual ErrorCode entries(uint64_t lo, uint64_t hi, uint64_t max_size, vector<Entry> &out);
-		virtual ErrorCode term(uint64_t i, uint64_t &t);
-		virtual ErrorCode last_index(uint64_t &i);
-		virtual ErrorCode first_index(uint64_t &i);
-		virtual ErrorCode snapshot(Snapshot **sn);
+		virtual ErrorCode Entries(uint64_t lo, uint64_t hi, uint64_t max_size, vector<Entry> &out);
+		virtual ErrorCode Term(uint64_t i, uint64_t &t);
+		virtual ErrorCode LastIndex(uint64_t &i);
+		virtual ErrorCode FirstIndex(uint64_t &i);
+		virtual ErrorCode Snapshot(raftpb::Snapshot **sn);
 
-		ErrorCode append(const vector<Entry> &entries);
-		ErrorCode apply_snapshot(const Snapshot &snapshot);
-		ErrorCode CreateSnapshot(uint64_t i, const ConfState *cs, const string &data, Snapshot &sh);
+		ErrorCode Append(const vector<Entry> &entries);
+		ErrorCode ApplySnapshot(const raftpb::Snapshot &snapshot);
+		ErrorCode CreateSnapshot(uint64_t i, const ConfState *cs, const string &data, raftpb::Snapshot &sh);
 		ErrorCode Compact(uint64_t compactIndex);
 		ErrorCode SetHardState(const HardState &st);
 
@@ -38,8 +38,8 @@ namespace raft {
 		uint64_t lastIndex();
 
 	public:
-		HardState m_hard_state;
-		Snapshot m_snapshot;
-		std::vector<Entry> m_entries;
+		HardState hard_state;
+		raftpb::Snapshot snapshot;
+		std::vector<Entry> entries;
 	};
 }

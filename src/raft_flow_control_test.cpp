@@ -12,11 +12,11 @@ BOOST_AUTO_TEST_CASE(TestMsgAppFlowControlFull) {
 	r->becomeCandidate();
 	r->becomeLeader();
 
-	auto &pr2 = r->m_prs[2];
+	auto &pr2 = r->prs[2];
 	// force the progress to be in replicate state
 	pr2->becomeReplicate();
 	// fill in the inflights window
-	for (int i = 0; i < r->m_maxInflight; i++) {
+	for (int i = 0; i < r->maxInflight; i++) {
 		r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0, 0, "somedata") }));
 		auto ms = r->readMessages();
 		BOOST_REQUIRE_EQUAL(ms.size(), 1);
@@ -42,18 +42,18 @@ BOOST_AUTO_TEST_CASE(TestMsgAppFlowControlMoveForward) {
 	r->becomeCandidate();
 	r->becomeLeader();
 
-	auto &pr2 = r->m_prs[2];
+	auto &pr2 = r->prs[2];
 	// force the progress to be in replicate state
 	pr2->becomeReplicate();
 	// fill in the inflights window
-	for (int i = 0; i < r->m_maxInflight; i++) {
+	for (int i = 0; i < r->maxInflight; i++) {
 		r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0, 0, "somedata") }));
 		r->readMessages();
 	}
 
 	// 1 is noop, 2 is the first proposal we just sent.
 	// so we start with 2.
-	for (int tt = 2; tt < r->m_maxInflight; tt++) {
+	for (int tt = 2; tt < r->maxInflight; tt++) {
 		// move forward the window
 		r->Step(*make_message(2, 1, MsgAppResp, (uint64_t)tt));
 		r->readMessages();
@@ -81,11 +81,11 @@ BOOST_AUTO_TEST_CASE(TestMsgAppFlowControlRecvHeartbeat) {
 	r->becomeCandidate();
 	r->becomeLeader();
 
-	auto &pr2 = r->m_prs[2];
+	auto &pr2 = r->prs[2];
 	// force the progress to be in replicate state
 	pr2->becomeReplicate();
 	// fill in the inflights window
-	for (size_t i = 0; i < r->m_maxInflight; i++) {
+	for (size_t i = 0; i < r->maxInflight; i++) {
 		r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0, 0, "somedata") }));
 		r->readMessages();
 	}

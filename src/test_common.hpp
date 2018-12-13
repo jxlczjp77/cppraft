@@ -39,7 +39,7 @@ struct blackHole : stateMachine {
 struct testRaft : public stateMachine, public Raft {
 	testRaft(Config &c) : Raft(c) {}
 	ErrorCode Step(Message &m) { return Raft::Step(m); }
-	vector<MessagePtr> readMessages() { return std::move(Raft::m_msgs); }
+	vector<MessagePtr> readMessages() { return std::move(Raft::msgs); }
 };
 
 typedef std::shared_ptr<stateMachine> stateMachinePtr;

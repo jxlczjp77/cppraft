@@ -44,7 +44,7 @@ namespace raft {
 		LogLevel      GetLogLevel() const;
 		string        ToString() const;
 
-		std::unique_ptr<detail::LogContextImpl> m_impl;
+		std::unique_ptr<detail::LogContextImpl> impl;
 	};
 
 	class Logger {

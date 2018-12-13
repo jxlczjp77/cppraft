@@ -39,12 +39,12 @@ namespace raft {
 		ReadOnlyLeaseBased
 	};
 
-	struct readOnly {
+	struct ReadOnly {
 		ReadOnlyOption option;
 		map<string, readIndexStatusPtr> pendingReadIndex;
 		vector<string> readIndexQueue;
 
-		readOnly(ReadOnlyOption option);
+		ReadOnly(ReadOnlyOption option);
 		void addRequest(uint64_t index, const Message &m);
 		int recvAck(const Message& msg);
 		void advance(const Message& m, vector<readIndexStatusPtr> &rss);

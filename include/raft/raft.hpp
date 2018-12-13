@@ -160,76 +160,76 @@ namespace raft {
 
 	class Raft : public boost::noncopyable {
 	public:
-		uint64_t m_id;
+		uint64_t id;
 
-		uint64_t m_Term;
-		uint64_t m_Vote;
+		uint64_t Term;
+		uint64_t Vote;
 
-		vector<ReadState> m_readStates;
+		vector<ReadState> readStates;
 
 		// the log
-		std::unique_ptr<raft_log> m_raftLog;
+		std::unique_ptr<raft_log> raftLog;
 
-		uint64_t m_maxMsgSize;
-		uint64_t m_maxUncommittedSize;
-		int m_maxInflight;
-		map<uint64_t, ProgressPtr> m_prs;
-		map<uint64_t, ProgressPtr> m_learnerPrs;
-		vector<uint64_t> m_matchBuf;
+		uint64_t maxMsgSize;
+		uint64_t maxUncommittedSize;
+		int maxInflight;
+		map<uint64_t, ProgressPtr> prs;
+		map<uint64_t, ProgressPtr> learnerPrs;
+		vector<uint64_t> matchBuf;
 
-		StateType m_state;
+		StateType state;
 
 		// isLearner is true if the local raft node is a learner.
-		bool m_isLearner;
+		bool isLearner;
 
-		map<uint64_t, bool> m_votes;
+		map<uint64_t, bool> votes;
 
-		vector<MessagePtr> m_msgs;
+		vector<MessagePtr> msgs;
 
 		// the leader id
-		uint64_t m_lead;
+		uint64_t lead;
 		// leadTransferee is id of the leader transfer target when its value is not zero.
 		// Follow the procedure defined in raft thesis 3.10.
-		uint64_t m_leadTransferee;
+		uint64_t leadTransferee;
 		// Only one conf change may be pending (in the log, but not yet
 		// applied) at a time. This is enforced via pendingConfIndex, which
 		// is set to a value >= the log index of the latest pending
 		// configuration change (if any). Config changes are only allowed to
 		// be proposed if the leader's applied index is greater than this
 		// value.
-		uint64_t m_pendingConfIndex;
+		uint64_t pendingConfIndex;
 		// an estimate of the size of the uncommitted tail of the Raft log. Used to
 		// prevent unbounded log growth. Only maintained by the leader. Reset on
 		// term changes.
-		uint64_t m_uncommittedSize;
+		uint64_t uncommittedSize;
 
-		std::unique_ptr<readOnly> m_readOnly;
+		std::unique_ptr<ReadOnly> readOnly;
 
 		// number of ticks since it reached last electionTimeout when it is leader
 		// or candidate.
 		// number of ticks since it reached last electionTimeout or received a
 		// valid message from current leader when it is a follower.
-		int m_electionElapsed;
+		int electionElapsed;
 
 		// number of ticks since it reached last heartbeatTimeout.
 		// only leader keeps heartbeatElapsed.
-		int m_heartbeatElapsed;
+		int heartbeatElapsed;
 
-		bool m_checkQuorum;
-		bool m_preVote;
+		bool checkQuorum;
+		bool preVote;
 
-		int m_heartbeatTimeout;
-		int m_electionTimeout;
+		int heartbeatTimeout;
+		int electionTimeout;
 		// randomizedElectionTimeout is a random number between
 		// [electiontimeout, 2 * electiontimeout - 1]. It gets reset
 		// when raft changes its state to follower or candidate.
-		int m_randomizedElectionTimeout;
-		bool m_disableProposalForwarding;
+		int randomizedElectionTimeout;
+		bool disableProposalForwarding;
 
-		std::function<void()> m_tick;
-		stepFunc m_step;
+		std::function<void()> tick;
+		stepFunc step;
 
-		Logger *m_logger;
+		Logger *logger;
 	public:
 		Raft(Config &config);
 

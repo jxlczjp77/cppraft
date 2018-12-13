@@ -26,10 +26,10 @@ SnapshotPtr makeSnapshot(uint64_t index, uint64_t term) {
 
 unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, Logger &logger) {
 	unstable u;
-	u.m_snapshot = std::move(snapshot);
-	u.m_entries = std::move(entries);
-	u.m_offset = offset;
-	u.m_logger = &logger;
+	u.snapshot = std::move(snapshot);
+	u.entries = std::move(entries);
+	u.offset = offset;
+	u.logger = &logger;
 	return std::move(u);
 }
 
@@ -72,8 +72,8 @@ void equal_entrys(const vector<Entry> &left, const vector<Entry> &right) {
 }
 
 string ltoa(raft_log *l) {
-	auto s = (boost::format("committed: %d\n") % l->m_committed).str();
-	s += (boost::format("applied:  %d\n") % l->m_applied).str();
+	auto s = (boost::format("committed: %d\n") % l->committed).str();
+	s += (boost::format("applied:  %d\n") % l->applied).str();
 	auto ents = l->allEntries();
 	for (size_t i = 0; i < ents.size(); i++) {
 		auto &e = ents[i];

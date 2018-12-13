@@ -32,7 +32,7 @@ BOOST_AUTO_TEST_CASE(TestStorageTerm) {
 		auto s = std::make_shared<MemoryStorage>(ents);
 		try {
 			uint64_t term;
-			auto err = s->term(tt.i, term);
+			auto err = s->Term(tt.i, term);
 			BOOST_REQUIRE_EQUAL(err, tt.werr);
 			BOOST_REQUIRE_EQUAL(term, tt.wterm);
 		} catch (const std::runtime_error &) {
@@ -69,7 +69,7 @@ BOOST_AUTO_TEST_CASE(TestStorageEntries) {
 	for (auto &tt : tests) {
 		auto s = std::make_shared<MemoryStorage>(ents);
 		vector<Entry> entries;
-		auto err = s->entries(tt.lo, tt.hi, tt.maxsize, entries);
+		auto err = s->Entries(tt.lo, tt.hi, tt.maxsize, entries);
 		BOOST_REQUIRE_EQUAL(err, tt.werr);
 		equal_entrys(entries, tt.wentries);
 	}
@@ -80,12 +80,12 @@ BOOST_AUTO_TEST_CASE(TestStorageLastIndex) {
 	auto s = std::make_shared<MemoryStorage>(ents);
 
 	uint64_t last;
-	auto err = s->last_index(last);
+	auto err = s->LastIndex(last);
 	BOOST_REQUIRE_EQUAL(err, OK);
 	BOOST_REQUIRE_EQUAL(last, 5);
 
-	s->append({ makeEntry(6, 5) });
-	err = s->last_index(last);
+	s->Append({ makeEntry(6, 5) });
+	err = s->LastIndex(last);
 	BOOST_REQUIRE_EQUAL(err, OK);
 	BOOST_REQUIRE_EQUAL(last, 6);
 }
@@ -95,12 +95,12 @@ BOOST_AUTO_TEST_CASE(TestStorageFirstIndex) {
 	auto s = std::make_shared<MemoryStorage>(ents);
 
 	uint64_t first;
-	auto err = s->first_index(first);
+	auto err = s->FirstIndex(first);
 	BOOST_REQUIRE_EQUAL(err, OK);
 	BOOST_REQUIRE_EQUAL(first, 4);
 
 	s->Compact(4);
-	err = s->first_index(first);
+	err = s->FirstIndex(first);
 	BOOST_REQUIRE_EQUAL(err, OK);
 	BOOST_REQUIRE_EQUAL(first, 5);
 }
@@ -125,9 +125,9 @@ BOOST_AUTO_TEST_CASE(TestStorageCompact) {
 		auto s = std::make_shared<MemoryStorage>(ents);
 		auto err = s->Compact(tt.i);
 		BOOST_REQUIRE_EQUAL(err, tt.werr);
-		BOOST_REQUIRE_EQUAL(s->m_entries[0].index(), tt.windex);
-		BOOST_REQUIRE_EQUAL(s->m_entries[0].term(), tt.wterm);
-		BOOST_REQUIRE_EQUAL(s->m_entries.size(), tt.wlen);
+		BOOST_REQUIRE_EQUAL(s->entries[0].index(), tt.windex);
+		BOOST_REQUIRE_EQUAL(s->entries[0].term(), tt.wterm);
+		BOOST_REQUIRE_EQUAL(s->entries.size(), tt.wlen);
 	}
 }
 
@@ -215,9 +215,9 @@ BOOST_AUTO_TEST_CASE(TestStorageAppend) {
 
 	for (auto &tt : tests) {
 		auto s = std::make_shared<MemoryStorage>(ents);
-		auto err = s->append(tt.entries);
+		auto err = s->Append(tt.entries);
 		BOOST_REQUIRE_EQUAL(err, tt.werr);
-		equal_entrys(s->m_entries, tt.wentries);
+		equal_entrys(s->entries, tt.wentries);
 	}
 }
 
@@ -238,12 +238,12 @@ BOOST_AUTO_TEST_CASE(TestStorageApplySnapshot) {
 	//Apply Snapshot successful
 	int i = 0;
 	auto &tt = tests[i];
-	auto err = s->apply_snapshot(tt);
+	auto err = s->ApplySnapshot(tt);
 	BOOST_REQUIRE_EQUAL(err, OK);
 
 	//Apply Snapshot fails due to ErrSnapOutOfDate
 	i = 1;
 	tt = tests[i];
-	err = s->apply_snapshot(tt);
+	err = s->ApplySnapshot(tt);
 	BOOST_REQUIRE_EQUAL(err, ErrSnapOutOfDate);
 }

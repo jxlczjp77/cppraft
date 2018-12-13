@@ -27,9 +27,9 @@ namespace raft {
 		void mustCheckOutOfBounds(uint64_t lo, uint64_t hi);
 
 	public:
-		unique_ptr<Snapshot> m_snapshot;
-		vector<Entry> m_entries;
-		uint64_t m_offset;
-		Logger *m_logger;
+		unique_ptr<Snapshot> snapshot;
+		vector<Entry> entries;
+		uint64_t offset;
+		Logger *logger;
 	};
 }

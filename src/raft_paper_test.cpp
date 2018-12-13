@@ -40,12 +40,12 @@ BOOST_AUTO_TEST_CASE(TestRejectStaleTermMessage) {
 		return OK;
 	};
 	auto r = newTestRaft(1, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
-	r->m_step = fakeStep;
+	r->step = fakeStep;
 	HardState hs;
 	hs.set_term(2);
 	r->loadState(hs);
 
-	r->Step(*make_message(0, 0, MsgApp, 0, r->m_Term - 1));
+	r->Step(*make_message(0, 0, MsgApp, 0, r->Term - 1));
 
 	BOOST_REQUIRE_EQUAL(called, false);
 }
@@ -54,7 +54,7 @@ BOOST_AUTO_TEST_CASE(TestRejectStaleTermMessage) {
 // Reference: section 5.2
 BOOST_AUTO_TEST_CASE(TestStartAsFollower) {
 	auto r = newTestRaft(1, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
-	BOOST_REQUIRE_EQUAL(r->m_state, StateFollower);
+	BOOST_REQUIRE_EQUAL(r->state, StateFollower);
 }
 
 // TestLeaderBcastBeat tests that if the leader receives a heartbeat tick,
@@ -72,7 +72,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderBcastBeat) {
 	}
 
 	for (size_t i = 0; i < hi; i++) {
-		r->m_tick();
+		r->tick();
 	}
 
 	auto msgs = r->readMessages();
@@ -132,11 +132,11 @@ BOOST_AUTO_TEST_CASE(TestLeaderElectionInOneRoundRPC) {
 		for (auto it = tt.votes.begin(); it != tt.votes.end(); ++it) {
 			auto id = it->first;
 			auto vote = it->second;
-			r->Step(*make_message(id, 1, MsgVoteResp, 0, r->m_Term, !vote));
+			r->Step(*make_message(id, 1, MsgVoteResp, 0, r->Term, !vote));
 		}
 
-		BOOST_REQUIRE_EQUAL(r->m_state, tt.state);
-		BOOST_REQUIRE_EQUAL(r->m_Term, 1);
+		BOOST_REQUIRE_EQUAL(r->state, tt.state);
+		BOOST_REQUIRE_EQUAL(r->Term, 1);
 	}
 }
 
@@ -184,12 +184,12 @@ BOOST_AUTO_TEST_CASE(TestCandidateFallback) {
 	for (auto &tt : tests) {
 		auto r = newTestRaft(1, { 1, 2, 3 }, 10, 1, std::make_shared<MemoryStorage>());
 		r->Step(*make_message(1, 1, MsgHup));
-		BOOST_REQUIRE_EQUAL(r->m_state, StateCandidate);
+		BOOST_REQUIRE_EQUAL(r->state, StateCandidate);
 
 		r->Step(*tt);
 
-		BOOST_REQUIRE_EQUAL(r->m_state, StateFollower);
-		BOOST_REQUIRE_EQUAL(r->m_Term, tt->term());
+		BOOST_REQUIRE_EQUAL(r->state, StateFollower);
+		BOOST_REQUIRE_EQUAL(r->Term, tt->term());
 	}
 }
 
@@ -226,13 +226,13 @@ BOOST_AUTO_TEST_CASE(TestLeaderStartReplication) {
 	r->becomeCandidate();
 	r->becomeLeader();
 	commitNoopEntry(r.get(), s.get());
-	auto li = r->m_raftLog->lastIndex();
+	auto li = r->raftLog->lastIndex();
 
 	vector<Entry> ents = { makeEntry(0, 0, "some data") };
 	r->Step(*make_message(1, 1, MsgProp, 0, 0, false, std::move(ents)));
 
-	BOOST_REQUIRE_EQUAL(r->m_raftLog->lastIndex(), li + 1);
-	BOOST_REQUIRE_EQUAL(r->m_raftLog->m_committed, li);
+	BOOST_REQUIRE_EQUAL(r->raftLog->lastIndex(), li + 1);
+	BOOST_REQUIRE_EQUAL(r->raftLog->committed, li);
 
 	auto msgs = r->readMessages();
 	std::sort(msgs.begin(), msgs.end(), [](const MessagePtr &l, const MessagePtr &r) {
@@ -243,7 +243,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderStartReplication) {
 	wmsgs.emplace_back(make_message(1, 2, MsgApp, li, 1, false, vector<Entry>(wents), 1, li));
 	wmsgs.emplace_back(make_message(1, 3, MsgApp, li, 1, false, vector<Entry>(wents), 1, li));
 	equal_messages(msgs, wmsgs);
-	equal_entrys(r->m_raftLog->unstableEntries(), wents);
+	equal_entrys(r->raftLog->unstableEntries(), wents);
 }
 
 // TestLeaderCommitEntry tests that when the entry has been safely replicated,
@@ -259,16 +259,16 @@ BOOST_AUTO_TEST_CASE(TestLeaderCommitEntry) {
 	r->becomeCandidate();
 	r->becomeLeader();
 	commitNoopEntry(r.get(), s.get());
-	auto li = r->m_raftLog->lastIndex();
+	auto li = r->raftLog->lastIndex();
 	r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0, 0, "some data") }));
 
 	for (auto &m : r->readMessages()) {
 		r->Step(*acceptAndReply(*m));
 	}
 
-	BOOST_REQUIRE_EQUAL(r->m_raftLog->m_committed, li + 1);
+	BOOST_REQUIRE_EQUAL(r->raftLog->committed, li + 1);
 	vector<Entry> wents = { makeEntry(li + 1, 1, "some data") };
-	equal_entrys(r->m_raftLog->nextEnts(), wents);
+	equal_entrys(r->raftLog->nextEnts(), wents);
 	auto msgs = r->readMessages();
 	std::sort(msgs.begin(), msgs.end(), [](const MessagePtr &l, const MessagePtr &r) {
 		return l->to() < r->to();
@@ -306,7 +306,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderAcknowledgeCommit) {
 		r->becomeCandidate();
 		r->becomeLeader();
 		commitNoopEntry(r.get(), s.get());
-		auto li = r->m_raftLog->lastIndex();
+		auto li = r->raftLog->lastIndex();
 		r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0, 0, "some data") }));
 
 		for (auto &m : r->readMessages()) {
@@ -315,7 +315,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderAcknowledgeCommit) {
 			}
 		}
 
-		BOOST_REQUIRE_EQUAL(r->m_raftLog->m_committed > li, tt.wack);
+		BOOST_REQUIRE_EQUAL(r->raftLog->committed > li, tt.wack);
 	}
 }
 
@@ -333,7 +333,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderCommitPrecedingEntries) {
 	};
 	for (auto &tt : tests) {
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->append(tt);
+		storage->Append(tt);
 		auto r = newTestRaft(1, { 1, 2, 3 }, 10, 1, storage);
 		HardState hs;
 		hs.set_term(2);
@@ -349,7 +349,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderCommitPrecedingEntries) {
 		uint64_t li = tt.size();
 		vector<Entry> wents(tt);
 		wents.insert(wents.end(), { makeEntry(li + 1, 3), makeEntry(li + 2, 3, "some data") });
-		equal_entrys(wents, r->m_raftLog->nextEnts());
+		equal_entrys(wents, r->raftLog->nextEnts());
 	}
 }
 
@@ -372,9 +372,9 @@ BOOST_AUTO_TEST_CASE(TestFollowerCommitEntry) {
 		
 		r->Step(*make_message(2, 1, MsgApp, 0, 1, false, vector<Entry>(tt.ents), 0, tt.commit));
 
-		BOOST_REQUIRE_EQUAL(r->m_raftLog->m_committed, tt.commit);
+		BOOST_REQUIRE_EQUAL(r->raftLog->committed, tt.commit);
 		vector<Entry> wents(tt.ents.begin(), tt.ents.begin() + tt.commit);
-		equal_entrys(r->m_raftLog->nextEnts(), wents);
+		equal_entrys(r->raftLog->nextEnts(), wents);
 	}
 }
 
@@ -405,7 +405,7 @@ BOOST_AUTO_TEST_CASE(TestFollowerCheckMsgApp) {
 	};
 	for (auto &tt : tests) {
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->append(ents);
+		storage->Append(ents);
 		auto r = newTestRaft(1, { 1, 2, 3 }, 10, 1, storage);
 		HardState hs;
 		hs.set_commit(1);
@@ -460,14 +460,14 @@ BOOST_AUTO_TEST_CASE(TestFollowerAppendEntries) {
 	};
 	for (auto &tt : tests) {
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->append({makeEntry(1, 1), makeEntry(2, 2)});
+		storage->Append({makeEntry(1, 1), makeEntry(2, 2)});
 		auto r = newTestRaft(1, { 1, 2, 3 }, 10, 1, storage);
 		r->becomeFollower(2, 2);
 
 		r->Step(*make_message(2, 1, MsgApp, tt.index, 2, false, vector<Entry>(tt.ents), tt.term));
 
-		equal_entrys(r->m_raftLog->allEntries(), tt.wents);
-		equal_entrys(r->m_raftLog->unstableEntries(), tt.wunstable);
+		equal_entrys(r->raftLog->allEntries(), tt.wents);
+		equal_entrys(r->raftLog->unstableEntries(), tt.wunstable);
 	}
 }
 
@@ -525,14 +525,14 @@ BOOST_AUTO_TEST_CASE(TestLeaderSyncFollowerLog) {
 	};
 	for (auto &tt : tests) {
 		auto leadStorage = std::make_shared<MemoryStorage>();
-		leadStorage->append(ents);
+		leadStorage->Append(ents);
 		auto lead = newTestRaft(1, { 1, 2, 3 }, 10, 1, leadStorage);
 		HardState hs;
-		hs.set_commit(lead->m_raftLog->lastIndex());
+		hs.set_commit(lead->raftLog->lastIndex());
 		hs.set_term(term);
 		lead->loadState(hs);
 		auto followerStorage = std::make_shared<MemoryStorage>();
-		followerStorage->append(tt);
+		followerStorage->Append(tt);
 		auto follower = newTestRaft(2, { 1, 2, 3 }, 10, 1, followerStorage);
 		HardState hs1;
 		hs1.set_term(term - 1);
@@ -548,7 +548,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderSyncFollowerLog) {
 
 		n->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
 
-		auto g = diffu(ltoa(lead->m_raftLog.get()), ltoa(follower->m_raftLog.get()));
+		auto g = diffu(ltoa(lead->raftLog.get()), ltoa(follower->raftLog.get()));
 		BOOST_REQUIRE_EQUAL(g, "");
 	}
 }
@@ -569,7 +569,7 @@ BOOST_AUTO_TEST_CASE(TestVoteRequest) {
 		r->Step(*make_message(2, 1, MsgApp, 0, tt.wterm - 1, false, vector<Entry>(tt.ents), 0));
 		r->readMessages();
 
-		for (int i = 1; i < r->m_electionTimeout*2; i++) {
+		for (int i = 1; i < r->electionTimeout*2; i++) {
 			r->tickElection();
 		}
 
@@ -614,7 +614,7 @@ BOOST_AUTO_TEST_CASE(TestVoter) {
 	};
 	for (auto &tt : tests) {
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->append(tt.ents);
+		storage->Append(tt.ents);
 		auto r = newTestRaft(1, { 1, 2 }, 10, 1, storage);
 		
 		r->Step(*make_message(2, 1, MsgVote, tt.index, 3, false, {}, tt.logterm));
@@ -644,7 +644,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderOnlyCommitsLogFromCurrentTerm) {
 	};
 	for (auto &tt : tests) {
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->append(ents);
+		storage->Append(ents);
 		auto r = newTestRaft(1, { 1, 2 }, 10, 1, storage);
 		HardState hs;
 		hs.set_term(2);
@@ -656,8 +656,8 @@ BOOST_AUTO_TEST_CASE(TestLeaderOnlyCommitsLogFromCurrentTerm) {
 		// propose a entry to current term
 		r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { {} }));
 
-		r->Step(*make_message(2, 1, MsgAppResp, tt.index, r->m_Term));
-		BOOST_REQUIRE_EQUAL(r->m_raftLog->m_committed, tt.wcommit);
+		r->Step(*make_message(2, 1, MsgAppResp, tt.index, r->Term));
+		BOOST_REQUIRE_EQUAL(r->raftLog->committed, tt.wcommit);
 	}
 }
 #endif
@@ -684,8 +684,8 @@ void testUpdateTermFromMessage(StateType state) {
 
 	r->Step(*make_message(0, 0, MsgApp, 0, 2));
 
-	BOOST_REQUIRE_EQUAL(r->m_Term, 2);
-	BOOST_REQUIRE_EQUAL(r->m_state, StateFollower);
+	BOOST_REQUIRE_EQUAL(r->Term, 2);
+	BOOST_REQUIRE_EQUAL(r->state, StateFollower);
 }
 
 // testNonleaderStartElection tests that if a follower receives no communication
@@ -712,12 +712,12 @@ void testNonleaderStartElection(StateType state) {
 	}
 
 	for (size_t i = 1; i < 2*et; i++) {
-		r->m_tick();
+		r->tick();
 	}
 
-	BOOST_REQUIRE_EQUAL(r->m_Term, 2);
-	BOOST_REQUIRE_EQUAL(r->m_state, StateCandidate);
-	BOOST_REQUIRE_EQUAL(r->m_votes[r->m_id], true);
+	BOOST_REQUIRE_EQUAL(r->Term, 2);
+	BOOST_REQUIRE_EQUAL(r->state, StateCandidate);
+	BOOST_REQUIRE_EQUAL(r->votes[r->id], true);
 	auto msgs = r->readMessages();
 	std::sort(msgs.begin(), msgs.end(), [](const MessagePtr &l, const MessagePtr &r) {
 		return l->to() < r->to();
@@ -749,7 +749,7 @@ void testNonleaderElectionTimeoutRandomized(StateType state) {
 	for (size_t round = 0; round < 50*et; round++) {
 		switch (state) {
 		case StateFollower:
-			r->becomeFollower(r->m_Term + 1, 2);
+			r->becomeFollower(r->Term + 1, 2);
 			break;
 		case StateCandidate:
 			r->becomeCandidate();
@@ -758,7 +758,7 @@ void testNonleaderElectionTimeoutRandomized(StateType state) {
 
 		int time = 0;
 		for (auto msgs = r->readMessages(); msgs.empty(); msgs = r->readMessages()) {
-			r->m_tick();
+			r->tick();
 			time++;
 		}
 		timeouts[time] = true;
@@ -786,7 +786,7 @@ void testNonleadersElectionTimeoutNonconflict(StateType state) {
 		for (auto &r : rs) {
 			switch (state) {
 			case StateFollower:
-				r->becomeFollower(r->m_Term + 1, None);
+				r->becomeFollower(r->Term + 1, None);
 				break;
 			case StateCandidate:
 				r->becomeCandidate();
@@ -797,7 +797,7 @@ void testNonleadersElectionTimeoutNonconflict(StateType state) {
 		int timeoutNum = 0;
 		for (; timeoutNum == 0;) {
 			for (auto &r : rs) {
-				r->m_tick();
+				r->tick();
 				if (r->readMessages().size() > 0) {
 					timeoutNum++;
 				}
@@ -813,7 +813,7 @@ void testNonleadersElectionTimeoutNonconflict(StateType state) {
 }
 
 void commitNoopEntry(testRaft *r, MemoryStorage *s) {
-	BOOST_REQUIRE_EQUAL(r->m_state, StateLeader);
+	BOOST_REQUIRE_EQUAL(r->state, StateLeader);
 	r->bcastAppend();
 	// simulate the response of MsgApp
 	auto msgs = r->readMessages();
@@ -825,9 +825,9 @@ void commitNoopEntry(testRaft *r, MemoryStorage *s) {
 	}
 	// ignore further messages to refresh followers' commit index
 	r->readMessages();
-	s->append(r->m_raftLog->unstableEntries());
-	r->m_raftLog->appliedTo(r->m_raftLog->m_committed);
-	r->m_raftLog->stableTo(r->m_raftLog->lastIndex(), r->m_raftLog->lastTerm());
+	s->Append(r->raftLog->unstableEntries());
+	r->raftLog->appliedTo(r->raftLog->committed);
+	r->raftLog->stableTo(r->raftLog->lastIndex(), r->raftLog->lastTerm());
 }
 
 MessagePtr acceptAndReply(Message &m) {

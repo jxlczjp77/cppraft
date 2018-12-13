@@ -39,34 +39,34 @@ namespace raft {
 		const char* file,
 		uint64_t line,
 		const char* method
-	) : m_impl(new detail::LogContextImpl) {
-		m_impl->level = level;
-		m_impl->file = boost::filesystem::path(file).generic_string();
-		m_impl->line = line;
-		m_impl->method = method;
+	) : impl(new detail::LogContextImpl) {
+		impl->level = level;
+		impl->file = boost::filesystem::path(file).generic_string();
+		impl->line = line;
+		impl->method = method;
 	}
 
 	LogContext::~LogContext() {
 	}
 
 	string LogContext::GetFile() const {
-		return m_impl->file;
+		return impl->file;
 	}
 
 	uint64_t LogContext::GetLineNumber() const {
-		return m_impl->line;
+		return impl->line;
 	}
 
 	string LogContext::GetMethod() const {
-		return m_impl->method;
+		return impl->method;
 	}
 
 	LogLevel LogContext::GetLogLevel() const {
-		return m_impl->level;
+		return impl->level;
 	}
 
 	string LogContext::ToString() const {
-		return m_impl->file + ":" + boost::lexical_cast<string>(m_impl->line) + " " + m_impl->method;
+		return impl->file + ":" + boost::lexical_cast<string>(impl->line) + " " + impl->method;
 	}
 
 	void DefaultLogger::log(const LogContext &ctx, const string &msg) {

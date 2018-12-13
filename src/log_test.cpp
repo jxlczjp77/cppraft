@@ -79,7 +79,7 @@ BOOST_AUTO_TEST_CASE(TestAppend) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->append(std::move(previousEnts));
+		storage->Append(std::move(previousEnts));
 		raft_log raftLog(storage, &DefaultLogger::instance());
 		uint64_t index = raftLog.append(tt.ents);
 		BOOST_REQUIRE_EQUAL(index, tt.windex);
@@ -87,7 +87,7 @@ BOOST_AUTO_TEST_CASE(TestAppend) {
 		auto err = raftLog.entries(ents, 1);
 		BOOST_REQUIRE_EQUAL(err, OK);
 		equal_entrys(ents, tt.wents);
-		BOOST_REQUIRE_EQUAL(raftLog.m_unstable.m_offset, tt.wunstable);
+		BOOST_REQUIRE_EQUAL(raftLog.unstable.offset, tt.wunstable);
 	}
 }
 
@@ -174,11 +174,11 @@ BOOST_AUTO_TEST_CASE(TestLogMaybeAppend) {
 		auto &tt = tests[i];
 		raft_log raftLog(std::make_shared<MemoryStorage>(), &DefaultLogger::instance());
 		raftLog.append(previousEnts);
-		raftLog.m_committed = commit;
+		raftLog.committed = commit;
 		try {
 			uint64_t glasti;
 			bool gappend = raftLog.maybeAppend(tt.index, tt.logTerm, tt.committed, tt.ents, glasti);
-			uint64_t gcommit = raftLog.m_committed;
+			uint64_t gcommit = raftLog.committed;
 			BOOST_REQUIRE_EQUAL(glasti, tt.wlasti);
 			BOOST_REQUIRE_EQUAL(gappend, tt.wappend);
 			BOOST_REQUIRE_EQUAL(gcommit, tt.wcommit);
@@ -201,7 +201,7 @@ BOOST_AUTO_TEST_CASE(TestCompactionSideEffects) {
 	uint64_t lastTerm = lastIndex;
 	auto storage = std::make_shared<MemoryStorage>();
 	for (uint64_t i = 1; i <= unstableIndex; i++) {
-		storage->append({ makeEntry(i, i) });
+		storage->Append({ makeEntry(i, i) });
 	}
 	raft_log raftLog(storage, &DefaultLogger::instance());
 	for (uint64_t i = unstableIndex; i < lastIndex; i++) {
@@ -210,7 +210,7 @@ BOOST_AUTO_TEST_CASE(TestCompactionSideEffects) {
 
 	bool ok = raftLog.maybeCommit(lastIndex, lastTerm);
 	BOOST_REQUIRE_EQUAL(ok, true);
-	raftLog.appliedTo(raftLog.m_committed);
+	raftLog.appliedTo(raftLog.committed);
 	uint64_t offset = 500;
 	storage->Compact(offset);
 	BOOST_REQUIRE_EQUAL(raftLog.lastIndex(), lastIndex);
@@ -253,7 +253,7 @@ BOOST_AUTO_TEST_CASE(TestHasNextEnts) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->apply_snapshot(*snap);
+		storage->ApplySnapshot(*snap);
 		raft_log raftLog(storage, &DefaultLogger::instance());
 		raftLog.append(ents);
 		raftLog.maybeCommit(5, 1);
@@ -277,7 +277,7 @@ BOOST_AUTO_TEST_CASE(TestNextEnts) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->apply_snapshot(*snap);
+		storage->ApplySnapshot(*snap);
 		raft_log raftLog(storage, &DefaultLogger::instance());
 		raftLog.append(ents);
 		raftLog.maybeCommit(5, 1);
@@ -302,7 +302,7 @@ BOOST_AUTO_TEST_CASE(TestUnstableEnts) {
 		auto &tt = tests[i];
 		auto storage = std::make_shared<MemoryStorage>();
 		vector<Entry> ee{ previousEnts.begin(), (previousEnts.begin() + (tt.unstable - 1)) };
-		storage->append(ee);
+		storage->Append(ee);
 		raft_log raftLog(storage, &DefaultLogger::instance());
 		raftLog.append({ previousEnts.begin() + (tt.unstable - 1), previousEnts.end() });
 		auto ents = raftLog.unstableEntries();
@@ -311,7 +311,7 @@ BOOST_AUTO_TEST_CASE(TestUnstableEnts) {
 		}
 		equal_entrys(ents, tt.wents);
 		uint64_t w = previousEnts[previousEnts.size() - 1].index() + 1;
-		uint64_t g = raftLog.m_unstable.m_offset;
+		uint64_t g = raftLog.unstable.offset;
 		BOOST_REQUIRE_EQUAL(w, g);
 	}
 }
@@ -333,9 +333,9 @@ BOOST_AUTO_TEST_CASE(TestCommitTo) {
 		try {
 			raft_log raftLog(std::make_shared<MemoryStorage>(), &DefaultLogger::instance());
 			raftLog.append(previousEnts);
-			raftLog.m_committed = commit;
+			raftLog.committed = commit;
 			raftLog.commitTo(tt.commit);
-			BOOST_REQUIRE_EQUAL(raftLog.m_committed, tt.wcommit);
+			BOOST_REQUIRE_EQUAL(raftLog.committed, tt.wcommit);
 		} catch (const std::runtime_error &) {
 			BOOST_REQUIRE_EQUAL(tt.wpanic, true);
 		}
@@ -358,7 +358,7 @@ BOOST_AUTO_TEST_CASE(TestStableTo) {
 		raft_log raftLog(std::make_shared<MemoryStorage>(), &DefaultLogger::instance());
 		raftLog.append({ makeEntry(1, 1),makeEntry(2, 2) });
 		raftLog.stableTo(tt.stablei, tt.stablet);
-		BOOST_REQUIRE_EQUAL(raftLog.m_unstable.m_offset, tt.wunstable);
+		BOOST_REQUIRE_EQUAL(raftLog.unstable.offset, tt.wunstable);
 	}
 }
 
@@ -389,11 +389,11 @@ BOOST_AUTO_TEST_CASE(TestStableToWithSnap) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->apply_snapshot(*makeSnapshot(snapi, snapt));
+		storage->ApplySnapshot(*makeSnapshot(snapi, snapt));
 		raft_log raftLog(storage, &DefaultLogger::instance());
 		raftLog.append(tt.newEnts);
 		raftLog.stableTo(tt.stablei, tt.stablet);
-		BOOST_REQUIRE_EQUAL(raftLog.m_unstable.m_offset, tt.wunstable);
+		BOOST_REQUIRE_EQUAL(raftLog.unstable.offset, tt.wunstable);
 	}
 }
 
@@ -416,11 +416,11 @@ BOOST_AUTO_TEST_CASE(TestCompaction) {
 		try {
 			auto storage = std::make_shared<MemoryStorage>();
 			for (uint64_t i = 1; i <= tt.lastIndex; i++) {
-				storage->append({ makeEntry(i, 0) });
+				storage->Append({ makeEntry(i, 0) });
 			}
 			raft_log raftLog(storage, &DefaultLogger::instance());
 			raftLog.maybeCommit(tt.lastIndex, 0);
-			raftLog.appliedTo(raftLog.m_committed);
+			raftLog.appliedTo(raftLog.committed);
 			for (size_t j = 0; j < tt.compact.size(); j++) {
 				auto err = storage->Compact(tt.compact[j]);
 				if (!SUCCESS(err)) {
@@ -438,12 +438,12 @@ BOOST_AUTO_TEST_CASE(TestCompaction) {
 BOOST_AUTO_TEST_CASE(TestLogRestore) {
 	uint64_t index = 1000, term = 1000;
 	auto storage = std::make_shared<MemoryStorage>();
-	storage->apply_snapshot(*makeSnapshot(index, term));
+	storage->ApplySnapshot(*makeSnapshot(index, term));
 	raft_log raftLog(storage, &DefaultLogger::instance());
 	BOOST_REQUIRE_EQUAL(raftLog.allEntries().empty(), true);
 	BOOST_REQUIRE_EQUAL(raftLog.firstIndex(), index + 1);
-	BOOST_REQUIRE_EQUAL(raftLog.m_committed, index);
-	BOOST_REQUIRE_EQUAL(raftLog.m_unstable.m_offset, index + 1);
+	BOOST_REQUIRE_EQUAL(raftLog.committed, index);
+	BOOST_REQUIRE_EQUAL(raftLog.unstable.offset, index + 1);
 	uint64_t t;
 	raftLog.term(index, t);
 	BOOST_REQUIRE_EQUAL(t, term);
@@ -452,7 +452,7 @@ BOOST_AUTO_TEST_CASE(TestLogRestore) {
 BOOST_AUTO_TEST_CASE(TestIsOutOfBounds) {
 	uint64_t offset = 100, num = 100;
 	auto storage = std::make_shared<MemoryStorage>();
-	storage->apply_snapshot(*makeSnapshot(offset, 0));
+	storage->ApplySnapshot(*makeSnapshot(offset, 0));
 	raft_log l(storage, &DefaultLogger::instance());
 	for (uint64_t i = 1; i <= num; i++) {
 		l.append({ makeEntry(i + offset, 0) });
@@ -489,7 +489,7 @@ BOOST_AUTO_TEST_CASE(TestIsOutOfBounds) {
 BOOST_AUTO_TEST_CASE(TestTerm) {
 	uint64_t offset = 100, num = 100;
 	auto storage = std::make_shared<MemoryStorage>();
-	storage->apply_snapshot(*makeSnapshot(offset, 1));
+	storage->ApplySnapshot(*makeSnapshot(offset, 1));
 	raft_log l(storage, &DefaultLogger::instance());
 	for (uint64_t i = 1; i < num; i++) {
 		l.append({ makeEntry(i + offset, i) });
@@ -518,7 +518,7 @@ BOOST_AUTO_TEST_CASE(TestTermWithUnstableSnapshot) {
 	uint64_t storagesnapi = 100;
 	uint64_t unstablesnapi = storagesnapi + 5;
 	auto storage = std::make_shared<MemoryStorage>();
-	storage->apply_snapshot(*makeSnapshot(storagesnapi, 1));
+	storage->ApplySnapshot(*makeSnapshot(storagesnapi, 1));
 	raft_log l(storage, &DefaultLogger::instance());
 	l.restore(*makeSnapshot(unstablesnapi, 1));
 
@@ -549,9 +549,9 @@ BOOST_AUTO_TEST_CASE(TestSlice) {
 	uint64_t half = offset + num / 2;
 	auto halfe = makeEntry(half, half);
 	auto storage = std::make_shared<MemoryStorage>();
-	storage->apply_snapshot(*makeSnapshot(offset, 0));
+	storage->ApplySnapshot(*makeSnapshot(offset, 0));
 	for (uint64_t i = 1; i < num / 2; i++) {
-		storage->append({ makeEntry(offset + i, offset + i) });
+		storage->Append({ makeEntry(offset + i, offset + i) });
 	}
 	raft_log l(storage, &DefaultLogger::instance());
 	for (uint64_t i = num / 2; i < num; i++) {

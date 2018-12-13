@@ -92,10 +92,10 @@ BOOST_AUTO_TEST_CASE(TestUnstableRestore) {
 	auto s = makeSnapshot(6, 2);
 	u.restore(*s);
 
-	BOOST_REQUIRE_EQUAL(u.m_offset, s->metadata().index() + 1);
-	BOOST_REQUIRE_EQUAL(u.m_entries.empty(), true);
-	BOOST_REQUIRE_EQUAL(u.m_snapshot->metadata().index(), s->metadata().index());
-	BOOST_REQUIRE_EQUAL(u.m_snapshot->metadata().term(), s->metadata().term());
+	BOOST_REQUIRE_EQUAL(u.offset, s->metadata().index() + 1);
+	BOOST_REQUIRE_EQUAL(u.entries.empty(), true);
+	BOOST_REQUIRE_EQUAL(u.snapshot->metadata().index(), s->metadata().index());
+	BOOST_REQUIRE_EQUAL(u.snapshot->metadata().term(), s->metadata().term());
 }
 
 BOOST_AUTO_TEST_CASE(TestUnstableStableTo) {
@@ -126,8 +126,8 @@ BOOST_AUTO_TEST_CASE(TestUnstableStableTo) {
 		auto &tt = tests[i];
 		unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
 		u.stableTo(tt.index, tt.term);
-		BOOST_REQUIRE_EQUAL(u.m_offset, tt.woffset);
-		BOOST_REQUIRE_EQUAL(u.m_entries.size(), tt.wlen);
+		BOOST_REQUIRE_EQUAL(u.offset, tt.woffset);
+		BOOST_REQUIRE_EQUAL(u.entries.size(), tt.wlen);
 	}
 }
 
@@ -169,8 +169,8 @@ BOOST_AUTO_TEST_CASE(TestUnstableTruncateAndAppend) {
 		auto &tt = tests[i];
 		unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
 		u.truncateAndAppend(std::move(tt.toappend));
-		BOOST_REQUIRE_EQUAL(u.m_offset, tt.woffset);
-		equal_entrys(u.m_entries, tt.wentries);
+		BOOST_REQUIRE_EQUAL(u.offset, tt.woffset);
+		equal_entrys(u.entries, tt.wentries);
 	}
 }
 // BOOST_AUTO_TEST_SUITE_END()

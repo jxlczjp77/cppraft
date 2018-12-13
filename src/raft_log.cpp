@@ -3,21 +3,21 @@
 #include <boost/format.hpp>
 
 namespace raft {
-	raft_log::raft_log(StoragePtr storage, Logger *logger, uint64_t maxNextEntsSize) {
-		m_storage = storage;
-		m_logger = logger;
-		m_maxNextEntsSize = maxNextEntsSize;
+	raft_log::raft_log(StoragePtr storage_, Logger *logger_, uint64_t maxNextEntsSize_) {
+		storage = storage_;
+		logger = logger_;
+		maxNextEntsSize = maxNextEntsSize_;
 		uint64_t firstIndex, lastIndex;
-		if (m_storage->first_index(firstIndex) != OK) {
+		if (storage->FirstIndex(firstIndex) != OK) {
 			abort();
 		}
-		if (m_storage->last_index(lastIndex) != OK) {
+		if (storage->LastIndex(lastIndex) != OK) {
 			abort();
 		}
-		m_unstable.m_offset = lastIndex + 1;
-		m_unstable.m_logger = logger;
-		m_committed = firstIndex - 1;
-		m_applied = firstIndex - 1;
+		unstable.offset = lastIndex + 1;
+		unstable.logger = logger;
+		committed = firstIndex - 1;
+		applied = firstIndex - 1;
 	}
 
 	raft_log::~raft_log() {
@@ -30,8 +30,8 @@ namespace raft {
 			lastnewi = index + ents.size();
 			uint64_t ci = findConflict(ents);
 			if (ci == 0) {
-			} else if (ci <= m_committed) {
-				fLog(m_logger, "entry %1% conflict with committed entry [committed(%2%)]", ci, m_committed);
+			} else if (ci <= this->committed) {
+				fLog(logger, "entry %1% conflict with committed entry [committed(%2%)]", ci, this->committed);
 			} else {
 				uint64_t offset = index + 1;
 				append({ ents.begin() + (ci - offset), ents.end() });
@@ -44,11 +44,11 @@ namespace raft {
 	}
 
 	void raft_log::commitTo(uint64_t tocommit) {
-		if (m_committed < tocommit) {
+		if (committed < tocommit) {
 			if (lastIndex() < tocommit) {
-				fLog(m_logger, "tocommit(%1%) is out of range [lastIndex(%2%)]. Was the raft log corrupted, truncated, or lost?", tocommit, lastIndex());
+				fLog(logger, "tocommit(%1%) is out of range [lastIndex(%2%)]. Was the raft log corrupted, truncated, or lost?", tocommit, lastIndex());
 			}
-			m_committed = tocommit;
+			committed = tocommit;
 		}
 	}
 
@@ -56,25 +56,25 @@ namespace raft {
 		if (i == 0) {
 			return;
 		}
-		if (m_committed < i || i < m_applied) {
-			fLog(m_logger, "applied(%1%) is out of range [prevApplied(%2%), committed(%3%)]", i, m_applied, m_committed);
+		if (committed < i || i < applied) {
+			fLog(logger, "applied(%1%) is out of range [prevApplied(%2%), committed(%3%)]", i, applied, committed);
 		}
-		m_applied = i;
+		applied = i;
 	}
 
-	void raft_log::stableTo(uint64_t i, uint64_t t) { m_unstable.stableTo(i, t); }
+	void raft_log::stableTo(uint64_t i, uint64_t t) { unstable.stableTo(i, t); }
 
-	void raft_log::stableSnapTo(uint64_t i) { m_unstable.stableSnapTo(i); }
+	void raft_log::stableSnapTo(uint64_t i) { unstable.stableSnapTo(i); }
 
 	uint64_t raft_log::append(const vector<Entry> &ents) {
 		if (ents.empty()) {
 			return lastIndex();
 		}
 		uint64_t after = ents[0].index() - 1;
-		if (after < m_committed) {
-			fLog(m_logger, "after(%1%) is out of range [committed(%2%)]", after, m_committed);
+		if (after < committed) {
+			fLog(logger, "after(%1%) is out of range [committed(%2%)]", after, committed);
 		}
-		m_unstable.truncateAndAppend(ents);
+		unstable.truncateAndAppend(ents);
 		return lastIndex();
 	}
 
@@ -89,19 +89,19 @@ namespace raft {
 	ErrorCode raft_log::term(uint64_t i, uint64_t &t) {
 		t = 0;
 		uint64_t dummyIndex = firstIndex() - 1;
-		if (i < dummyIndex || i > lastIndex() || m_unstable.maybeTerm(i, t)) {
+		if (i < dummyIndex || i > lastIndex() || unstable.maybeTerm(i, t)) {
 			return OK;
 		}
 
-		return m_storage->term(i, t);
+		return storage->Term(i, t);
 	}
 
 	uint64_t raft_log::firstIndex() {
 		uint64_t firstIndex;
-		if (m_unstable.maybeFirstIndex(firstIndex)) {
+		if (unstable.maybeFirstIndex(firstIndex)) {
 			return firstIndex;
 		}
-		if (m_storage->first_index(firstIndex) == OK) {
+		if (storage->FirstIndex(firstIndex) == OK) {
 			return firstIndex;
 		}
 		abort();
@@ -110,10 +110,10 @@ namespace raft {
 
 	uint64_t raft_log::lastIndex() {
 		uint64_t lastIndex;
-		if (m_unstable.maybeLastIndex(lastIndex)) {
+		if (unstable.maybeLastIndex(lastIndex)) {
 			return lastIndex;
 		}
-		if (m_storage->last_index(lastIndex) == OK) {
+		if (storage->LastIndex(lastIndex) == OK) {
 			return lastIndex;
 		}
 		abort();
@@ -128,7 +128,7 @@ namespace raft {
 				if (i <= lastIndex()) {
 					uint64_t dummy;
 					ErrorCode err = term(i, dummy);
-					iLog(m_logger, "found conflict at index %1% [existing term: %2%, conflicting term: %3%]",
+					iLog(logger, "found conflict at index %1% [existing term: %2%, conflicting term: %3%]",
 						i, zeroTermOnErrCompacted(dummy, err), t);
 				}
 				return ne.index();
@@ -144,7 +144,7 @@ namespace raft {
 		if (err == ErrCompacted) {
 			return 0;
 		}
-		fLog(m_logger, "unexpected error: %1%", error_string(err));
+		fLog(logger, "unexpected error: %1%", error_string(err));
 		return 0;
 	}
 
@@ -163,7 +163,7 @@ namespace raft {
 		uint64_t t;
 		ErrorCode err = term(lastIndex(), t);
 		if (!SUCCESS(err)) {
-			fLog(m_logger, "unexpected error when getting the last term (%1%)", err);
+			fLog(logger, "unexpected error when getting the last term (%1%)", err);
 		}
 		return t;
 	}
@@ -186,22 +186,22 @@ namespace raft {
 		if (lo == hi) {
 			return OK;
 		}
-		if (lo < m_unstable.m_offset) {
-			ErrorCode err = m_storage->entries(lo, min(hi, m_unstable.m_offset), maxSize, out);
+		if (lo < unstable.offset) {
+			ErrorCode err = storage->Entries(lo, min(hi, unstable.offset), maxSize, out);
 			if (err == ErrCompacted) {
 				return err;
 			} else if (err == ErrUnavailable) {
-				fLog(m_logger, "entries[%1%:%2%) is unavailable from storage", lo, min(hi, m_unstable.m_offset));
+				fLog(logger, "entries[%1%:%2%) is unavailable from storage", lo, min(hi, unstable.offset));
 			} else if (!SUCCESS(err)) {
 				abort(); // TODO(bdarnell)
 			}
 			// check if ents has reached the size limitation
-			if (uint64_t(out.size()) < min(hi, m_unstable.m_offset) - lo) {
+			if (uint64_t(out.size()) < min(hi, unstable.offset) - lo) {
 				return OK;
 			}
 		}
-		if (hi > m_unstable.m_offset) {
-			m_unstable.slice(max(lo, m_unstable.m_offset), hi, out);
+		if (hi > unstable.offset) {
+			unstable.slice(max(lo, unstable.offset), hi, out);
 		}
 		limitSize(out, maxSize);
 		return OK;
@@ -210,7 +210,7 @@ namespace raft {
 	// l.firstIndex <= lo <= hi <= l.firstIndex + len(l.entries)
 	ErrorCode raft_log::mustCheckOutOfBounds(uint64_t lo, uint64_t hi) {
 		if (lo > hi) {
-			fLog(m_logger, "invalid slice %1% > %2%", lo, hi);
+			fLog(logger, "invalid slice %1% > %2%", lo, hi);
 		}
 		uint64_t fi = firstIndex();
 		if (lo < fi) {
@@ -219,13 +219,13 @@ namespace raft {
 
 		uint64_t length = lastIndex() + 1 - fi;
 		if (lo < fi || hi > fi + length) {
-			fLog(m_logger, "slice[%1%,%2%) out of bound [%3%,%4%]", lo, hi, fi, lastIndex());
+			fLog(logger, "slice[%1%,%2%) out of bound [%3%,%4%]", lo, hi, fi, lastIndex());
 		}
 		return OK;
 	}
 
 	bool raft_log::maybeCommit(uint64_t maxIndex, uint64_t term) {
-		if (maxIndex > m_committed) {
+		if (maxIndex > committed) {
 			uint64_t t;
 			ErrorCode err = this->term(maxIndex, t);
 			if (zeroTermOnErrCompacted(t, err) == term) {
@@ -237,12 +237,12 @@ namespace raft {
 	}
 
 	const vector<Entry> &raft_log::unstableEntries() {
-		return m_unstable.m_entries;
+		return unstable.entries;
 	}
 
 	bool raft_log::hasNextEnts() {
-		uint64_t off = max(m_applied + 1, firstIndex());
-		return m_committed + 1 > off;
+		uint64_t off = max(applied + 1, firstIndex());
+		return committed + 1 > off;
 	}
 
 	// nextEnts returns all the available entries for execution.
@@ -250,11 +250,11 @@ namespace raft {
 	// entries after the index of snapshot.
 	vector<Entry> raft_log::nextEnts() {
 		vector<Entry> ents;
-		uint64_t off = max(m_applied + 1, firstIndex());
-		if (m_committed + 1 > off) {
-			ErrorCode err = slice(ents, off, m_committed + 1, m_maxNextEntsSize);
+		uint64_t off = max(applied + 1, firstIndex());
+		if (committed + 1 > off) {
+			ErrorCode err = slice(ents, off, committed + 1, maxNextEntsSize);
 			if (!SUCCESS(err)) {
-				fLog(m_logger, "unexpected error when getting unapplied entries (%1%)", err);
+				fLog(logger, "unexpected error when getting unapplied entries (%1%)", err);
 			}
 		}
 		return std::move(ents);
@@ -275,20 +275,20 @@ namespace raft {
 	}
 
 	void raft_log::restore(const Snapshot &s) {
-		iLog(m_logger, "log [%1%] starts to restore snapshot [index: %2%, term: %3%]", to_string().c_str(), s.metadata().index(), s.metadata().index());
-		m_committed = s.metadata().index();
-		m_unstable.restore(s);
+		iLog(logger, "log [%1%] starts to restore snapshot [index: %2%, term: %3%]", to_string().c_str(), s.metadata().index(), s.metadata().index());
+		committed = s.metadata().index();
+		unstable.restore(s);
 	}
 
 	string raft_log::to_string() {
-		return (boost::format("committed=%1%, applied=%2%, unstable.offset=%3%, len(unstable.Entries)=%4%") % m_committed % m_applied % m_unstable.m_offset % m_unstable.m_entries.size()).str();
+		return (boost::format("committed=%1%, applied=%2%, unstable.offset=%3%, len(unstable.Entries)=%4%") % committed % applied % unstable.offset % unstable.entries.size()).str();
 	}
 
 	ErrorCode raft_log::snapshot(Snapshot **sn) {
-		if (m_unstable.m_snapshot) {
-			*sn = &*m_unstable.m_snapshot;
+		if (unstable.snapshot) {
+			*sn = &*unstable.snapshot;
 			return OK;
 		}
-		return m_storage->snapshot(sn);
+		return storage->Snapshot(sn);
 	}
 } // namespace raft

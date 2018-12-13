@@ -22,10 +22,10 @@ BOOST_AUTO_TEST_CASE(TestSendingSnapshotSetPendingSnapshot) {
 
 	// force set the next of node 2, so that
 	// node 2 needs a snapshot
-	sm->m_prs[2]->Next = sm->m_raftLog->firstIndex();
+	sm->prs[2]->Next = sm->raftLog->firstIndex();
 
-	sm->Step(*make_message(2, 1, MsgAppResp, sm->m_prs[2]->Next - 1, 0, true));
-	BOOST_REQUIRE_EQUAL(sm->m_prs[2]->PendingSnapshot, 11);
+	sm->Step(*make_message(2, 1, MsgAppResp, sm->prs[2]->Next - 1, 0, true));
+	BOOST_REQUIRE_EQUAL(sm->prs[2]->PendingSnapshot, 11);
 }
 
 BOOST_AUTO_TEST_CASE(TestPendingSnapshotPauseReplication) {
@@ -36,7 +36,7 @@ BOOST_AUTO_TEST_CASE(TestPendingSnapshotPauseReplication) {
 	sm->becomeCandidate();
 	sm->becomeLeader();
 
-	sm->m_prs[2]->becomeSnapshot(11);
+	sm->prs[2]->becomeSnapshot(11);
 
 	sm->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0,0,"somedata") }));
 	auto msgs = sm->readMessages();
@@ -51,13 +51,13 @@ BOOST_AUTO_TEST_CASE(TestSnapshotFailure) {
 	sm->becomeCandidate();
 	sm->becomeLeader();
 
-	sm->m_prs[2]->Next = 1;
-	sm->m_prs[2]->becomeSnapshot(11);
+	sm->prs[2]->Next = 1;
+	sm->prs[2]->becomeSnapshot(11);
 
 	sm->Step(*make_message(2, 1, MsgSnapStatus, 0, 0, true));
-	BOOST_REQUIRE_EQUAL(sm->m_prs[2]->PendingSnapshot, 0);
-	BOOST_REQUIRE_EQUAL(sm->m_prs[2]->Next, 1);
-	BOOST_REQUIRE_EQUAL(sm->m_prs[2]->Paused, true);
+	BOOST_REQUIRE_EQUAL(sm->prs[2]->PendingSnapshot, 0);
+	BOOST_REQUIRE_EQUAL(sm->prs[2]->Next, 1);
+	BOOST_REQUIRE_EQUAL(sm->prs[2]->Paused, true);
 }
 
 BOOST_AUTO_TEST_CASE(TestSnapshotSucceed) {
@@ -68,13 +68,13 @@ BOOST_AUTO_TEST_CASE(TestSnapshotSucceed) {
 	sm->becomeCandidate();
 	sm->becomeLeader();
 
-	sm->m_prs[2]->Next = 1;
-	sm->m_prs[2]->becomeSnapshot(11);
+	sm->prs[2]->Next = 1;
+	sm->prs[2]->becomeSnapshot(11);
 
 	sm->Step(*make_message(2, 1, MsgSnapStatus, 0, 0, false));
-	BOOST_REQUIRE_EQUAL(sm->m_prs[2]->PendingSnapshot, 0);
-	BOOST_REQUIRE_EQUAL(sm->m_prs[2]->Next, 12);
-	BOOST_REQUIRE_EQUAL(sm->m_prs[2]->Paused, true);
+	BOOST_REQUIRE_EQUAL(sm->prs[2]->PendingSnapshot, 0);
+	BOOST_REQUIRE_EQUAL(sm->prs[2]->Next, 12);
+	BOOST_REQUIRE_EQUAL(sm->prs[2]->Paused, true);
 }
 
 BOOST_AUTO_TEST_CASE(TestSnapshotAbort) {
@@ -85,12 +85,12 @@ BOOST_AUTO_TEST_CASE(TestSnapshotAbort) {
 	sm->becomeCandidate();
 	sm->becomeLeader();
 
-	sm->m_prs[2]->Next = 1;
-	sm->m_prs[2]->becomeSnapshot(11);
+	sm->prs[2]->Next = 1;
+	sm->prs[2]->becomeSnapshot(11);
 
 	// A successful msgAppResp that has a higher/equal index than the
 	// pending snapshot should abort the pending snapshot.
 	sm->Step(*make_message(2, 1, MsgAppResp, 11));
-	BOOST_REQUIRE_EQUAL(sm->m_prs[2]->PendingSnapshot, 0);
-	BOOST_REQUIRE_EQUAL(sm->m_prs[2]->Next, 12);
+	BOOST_REQUIRE_EQUAL(sm->prs[2]->PendingSnapshot, 0);
+	BOOST_REQUIRE_EQUAL(sm->prs[2]->Next, 12);
 }

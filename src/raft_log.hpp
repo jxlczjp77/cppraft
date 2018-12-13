@@ -36,13 +36,13 @@ namespace raft {
 		ErrorCode snapshot(Snapshot **sn);
 
 	public:
-		StoragePtr m_storage;
-		unstable m_unstable;
+		StoragePtr storage;
+		unstable unstable;
 
-		uint64_t m_committed;
-		uint64_t m_applied;
+		uint64_t committed;
+		uint64_t applied;
 
-		Logger *m_logger;
-		uint64_t m_maxNextEntsSize;
+		Logger *logger;
+		uint64_t maxNextEntsSize;
 	};
 }

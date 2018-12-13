@@ -2,7 +2,7 @@
 #include <boost/throw_exception.hpp>
 
 namespace raft {
-	readOnly::readOnly(ReadOnlyOption o) : option(o) {
+	ReadOnly::ReadOnly(ReadOnlyOption o) : option(o) {
 
 	}
 
@@ -10,7 +10,7 @@ namespace raft {
 	// `index` is the commit index of the raft state machine when it received
 	// the read only request.
 	// `m` is the original read only request message from the local or remote node.
-	void readOnly::addRequest(uint64_t index, const Message &m) {
+	void ReadOnly::addRequest(uint64_t index, const Message &m) {
 		auto ctx = string(m.entries(0).data());
 		if (pendingReadIndex.find(ctx) != pendingReadIndex.end()) {
 			return;
@@ -22,7 +22,7 @@ namespace raft {
 	// recvAck notifies the readonly struct that the raft state machine received
 	// an acknowledgment of the heartbeat that attached with the read only request
 	// context.
-	int readOnly::recvAck(const Message &msg) {
+	int ReadOnly::recvAck(const Message &msg) {
 		auto iter = pendingReadIndex.find(msg.context());
 		if (iter == pendingReadIndex.end()) {
 			return 0;
@@ -36,7 +36,7 @@ namespace raft {
 	// advance advances the read only request queue kept by the readonly struct.
 	// It dequeues the requests until it finds the read only request that has
 	// the same context as the given `m`.
-	void readOnly::advance(const Message& m, vector<readIndexStatusPtr> &rss) {
+	void ReadOnly::advance(const Message& m, vector<readIndexStatusPtr> &rss) {
 		int i = 0;
 		bool found;
 
@@ -64,7 +64,7 @@ namespace raft {
 
 	// lastPendingRequestCtx returns the context of the last pending read only
 	// request in readonly struct.
-	string readOnly::lastPendingRequestCtx() {
+	string ReadOnly::lastPendingRequestCtx() {
 		if (readIndexQueue.empty()) {
 			return string();
 		}
