@@ -84,7 +84,7 @@ BOOST_AUTO_TEST_CASE(TestStorageLastIndex) {
 	BOOST_REQUIRE_EQUAL(err, OK);
 	BOOST_REQUIRE_EQUAL(last, 5);
 
-	s->Append({ makeEntry(6, 5) });
+	s->Append(EntryVec{ makeEntry(6, 5) });
 	err = s->LastIndex(last);
 	BOOST_REQUIRE_EQUAL(err, OK);
 	BOOST_REQUIRE_EQUAL(last, 6);

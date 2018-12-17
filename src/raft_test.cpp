@@ -1,5 +1,6 @@
 ﻿#include <boost/test/unit_test.hpp>
 #include "test_common.hpp"
+#include "utils.hpp"
 #include <boost/throw_exception.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/random/linear_congruential.hpp>
@@ -51,12 +52,6 @@ vector<MessagePtr> readMessages(TRaftPtr &r) {
 	return std::move(r->msgs);
 }
 
-// PayloadSize is the size of the payload of this Entry. Notably, it does not
-// depend on its Index or Term.
-int PayloadSize(const Entry &e) {
-	return int(e.data().size());
-}
-
 stateMachinePtr nopStepper = std::make_unique<blackHole>();
 
 networkptr newNetworkWithConfig(void(*configFunc)(Config &), const vector<stateMachinePtr> &peers);
@@ -65,13 +60,17 @@ template<class TRaftPtr> void setRandomizedElectionTimeout(TRaftPtr &r, int v);
 TestRaftPtr newTestRaft(uint64_t id, vector<uint64_t> &&peers, int election, int heartbeat, StoragePtr storage, Logger *Logger) {
 	auto config = newTestConfig(id, std::move(peers), election, heartbeat, storage);
 	config.Logger = Logger;
-	return std::make_shared<testRaft>(config);
+	auto r = std::make_shared<testRaft>();
+	r->Init(std::move(config));
+	return r;
 }
 
 TestRaftPtr newTestLearnerRaft(uint64_t id, vector<uint64_t> &&peers, vector<uint64_t> &&learners, int election, int heartbeat, StoragePtr storage) {
 	auto cfg = newTestConfig(id, std::move(peers), election, heartbeat, storage);
 	cfg.learners = learners;
-	return std::make_shared<testRaft>(cfg);
+	auto r = std::make_shared<testRaft>();
+	r->Init(std::move(cfg));
+	return r;
 }
 #ifndef DISABLE_RAFT_TEST
 BOOST_AUTO_TEST_CASE(TestProgressBecomeProbe) {
@@ -261,7 +260,8 @@ BOOST_AUTO_TEST_CASE(TestProgressFlowControl) {
 	auto cfg = newTestConfig(1, { 1, 2 }, 5, 1, std::make_shared<MemoryStorage>());
 	cfg.MaxInflightMsgs = 3;
 	cfg.MaxSizePerMsg = 2048;
-	RaftPtr r = std::make_unique<Raft>(cfg);
+	RaftPtr r = std::make_unique<Raft>();
+	r->Init(std::move(cfg));
 	r->becomeCandidate();
 	r->becomeLeader();
 
@@ -316,11 +316,12 @@ BOOST_AUTO_TEST_CASE(TestUncommittedEntryLimit) {
 	const int maxEntries = 1024;
 	Entry testEntry;
 	testEntry.set_data("testdata");
-	const int maxEntrySize = maxEntries * PayloadSize(testEntry);
+	const int maxEntrySize = maxEntries * (int)PayloadSize(testEntry);
 	auto cfg = newTestConfig(1, { 1, 2, 3 }, 5, 1, std::make_shared<MemoryStorage>());
 	cfg.MaxUncommittedEntriesSize = uint64_t(maxEntrySize);
 	cfg.MaxInflightMsgs = 2 * 1024; // avoid interference
-	RaftPtr r = std::make_unique<Raft>(cfg);
+	RaftPtr r = std::make_unique<Raft>();
+	r->Init(std::move(cfg));
 	r->becomeCandidate();
 	r->becomeLeader();
 	BOOST_REQUIRE_EQUAL(r->uncommittedSize, 0);
@@ -670,7 +671,7 @@ BOOST_AUTO_TEST_CASE(TestDuelingCandidates) {
 	nt->send(make_message(3, 3, MsgHup));
 
 	auto storage = std::make_shared<MemoryStorage>();
-	storage->Append({ {}, makeEntry(1, 1) });
+	storage->Append(EntryVec{ {}, makeEntry(1, 1) });
 	raft_log wlog(storage, &DefaultLogger::instance());
 	wlog.committed = 1;
 	wlog.unstable.offset = 2;
@@ -709,9 +710,12 @@ BOOST_AUTO_TEST_CASE(TestDuelingPreCandidates) {
 	cfgA.PreVote = true;
 	cfgB.PreVote = true;
 	cfgC.PreVote = true;
-	auto a = std::make_shared<testRaft>(cfgA);
-	auto b = std::make_shared<testRaft>(cfgB);
-	auto c = std::make_shared<testRaft>(cfgC);
+	auto a = std::make_shared<testRaft>();
+	auto b = std::make_shared<testRaft>();
+	auto c = std::make_shared<testRaft>();
+	a->Init(std::move(cfgA));
+	b->Init(std::move(cfgB));
+	c->Init(std::move(cfgC));
 
 	auto nt = newNetwork({ a, b, c });
 	nt->cut(1, 3);
@@ -735,7 +739,7 @@ BOOST_AUTO_TEST_CASE(TestDuelingPreCandidates) {
 
 
 	auto storage = std::make_shared<MemoryStorage>();
-	storage->Append({ {}, makeEntry(1, 1) });
+	storage->Append(EntryVec{ {}, makeEntry(1, 1) });
 	raft_log wlog(storage, &DefaultLogger::instance());
 	wlog.committed = 1;
 	wlog.unstable.offset = 2;
@@ -790,7 +794,7 @@ BOOST_AUTO_TEST_CASE(TestCandidateConcede) {
 	BOOST_REQUIRE_EQUAL(a->state, StateFollower);
 	BOOST_REQUIRE_EQUAL(a->Term, 1);
 	auto storage = std::make_shared<MemoryStorage>();
-	storage->Append({ {}, makeEntry(1, 1), makeEntry(2, 1, string(data)) });
+	storage->Append(EntryVec{ {}, makeEntry(1, 1), makeEntry(2, 1, string(data)) });
 	raft_log wlog(storage, &DefaultLogger::instance());
 	wlog.committed = 2;
 	wlog.unstable.offset = 3;
@@ -835,7 +839,7 @@ BOOST_AUTO_TEST_CASE(TestOldMessages) {
 	tt->send(make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0, 0, "somedata") }));
 
 	auto storage = std::make_shared<MemoryStorage>();
-	storage->Append({ {}, makeEntry(1, 1), makeEntry(2, 2), makeEntry(3, 3), makeEntry(4, 3, "somedata") });
+	storage->Append(EntryVec{ {}, makeEntry(1, 1), makeEntry(2, 2), makeEntry(3, 3), makeEntry(4, 3, "somedata") });
 	raft_log ilog(storage, &DefaultLogger::instance());
 	ilog.committed = 4;
 	ilog.unstable.offset = 5;
@@ -883,7 +887,7 @@ BOOST_AUTO_TEST_CASE(TestProposal) {
 		auto wantLog = std::make_unique<raft_log>(std::make_shared<MemoryStorage>(), &DefaultLogger::instance());
 		if (tt.success) {
 			auto storage = std::make_shared<MemoryStorage>();
-			storage->Append({ {}, makeEntry(1, 1), makeEntry(2, 1, data) });
+			storage->Append(EntryVec{ {}, makeEntry(1, 1), makeEntry(2, 1, data) });
 			wantLog = std::make_unique<raft_log>(storage, &DefaultLogger::instance());
 			wantLog->committed = 2;
 			wantLog->unstable.offset = 3;
@@ -920,7 +924,7 @@ BOOST_AUTO_TEST_CASE(TestProposalByProxy) {
 		tt->send(make_message(2, 2, MsgProp, 0, 0, false, { makeEntry(0, 0, data) }));
 
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->Append({ {}, makeEntry(1, 1), makeEntry(2, 1, data) });
+		storage->Append(EntryVec{ {}, makeEntry(1, 1), makeEntry(2, 1, data) });
 		raft_log wantLog(storage, &DefaultLogger::instance());
 		wantLog.committed = 2;
 		wantLog.unstable.offset = 3;
@@ -1072,7 +1076,7 @@ BOOST_AUTO_TEST_CASE(TestHandleMsgApp) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
 		auto &tt = tests[i];
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->Append({ makeEntry(1, 1), makeEntry(2, 2) });
+		storage->Append(EntryVec{ makeEntry(1, 1), makeEntry(2, 2) });
 		auto sm = newTestRaft(1, { 1 }, 10, 1, storage);
 		sm->becomeFollower(2, None);
 
@@ -1103,7 +1107,7 @@ BOOST_AUTO_TEST_CASE(TestHandleHeartbeat) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
 		auto &tt = tests[i];
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->Append({ makeEntry(1, 1), makeEntry(2, 2), makeEntry(3, 3) });
+		storage->Append(EntryVec{ makeEntry(1, 1), makeEntry(2, 2), makeEntry(3, 3) });
 		auto sm = newTestRaft(1, { 1, 2 }, 5, 1, storage);
 		sm->becomeFollower(2, 2);
 		sm->raftLog->commitTo(commit);
@@ -1119,7 +1123,7 @@ BOOST_AUTO_TEST_CASE(TestHandleHeartbeat) {
 // TestHandleHeartbeatResp ensures that we re-send log entries when we get a heartbeat response.
 BOOST_AUTO_TEST_CASE(TestHandleHeartbeatResp) {
 	auto storage = std::make_shared<MemoryStorage>();
-	storage->Append({ makeEntry(1, 1), makeEntry(2, 2), makeEntry(3, 3) });
+	storage->Append(EntryVec{ makeEntry(1, 1), makeEntry(2, 2), makeEntry(3, 3) });
 	auto sm = newTestRaft(1, { 1, 2 }, 5, 1, storage);
 	sm->becomeCandidate();
 	sm->becomeLeader();
@@ -1789,7 +1793,7 @@ BOOST_AUTO_TEST_CASE(TestReadOnlyForNewLeader) {
 	vector<stateMachinePtr> peers;
 	for (auto &c : nodeConfigs) {
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->Append({ makeEntry(1, 1), makeEntry(2, 1) });
+		storage->Append(EntryVec{ makeEntry(1, 1), makeEntry(2, 1) });
 		HardState hs;
 		hs.set_term(1);
 		hs.set_commit(c.committed);
@@ -1799,7 +1803,8 @@ BOOST_AUTO_TEST_CASE(TestReadOnlyForNewLeader) {
 		}
 		auto cfg = newTestConfig(c.id, { 1, 2, 3 }, 10, 1, storage);
 		cfg.Applied = c.applied;
-		auto raft = std::make_shared<testRaft>(cfg);
+		auto raft = std::make_shared<testRaft>();
+		raft->Init(std::move(cfg));
 		peers.push_back(raft);
 	}
 	auto nt = newNetwork(peers);
@@ -1863,7 +1868,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderAppResp) {
 		// sm term is 1 after it becomes the leader.
 		// thus the last log term must be 1 to be committed.
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->Append({ {}, makeEntry(1, 0), makeEntry(2, 1) });
+		storage->Append(EntryVec{ {}, makeEntry(1, 0), makeEntry(2, 1) });
 		auto sm = newTestRaft(1, { 1, 2, 3 }, 10, 1, storage);
 		sm->raftLog->unstable.offset = 3;
 		sm->becomeCandidate();
@@ -1941,7 +1946,7 @@ BOOST_AUTO_TEST_CASE(TestRecvMsgBeat) {
 
 	for (auto &tt : tests) {
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->Append({ {}, makeEntry(1, 0), makeEntry(2, 1) });
+		storage->Append(EntryVec{ {}, makeEntry(1, 0), makeEntry(2, 1) });
 		auto sm = newTestRaft(1, { 1, 2, 3 }, 10, 1, storage);
 		sm->Term = 1;
 		sm->state = tt.state;
@@ -3072,13 +3077,14 @@ BOOST_AUTO_TEST_CASE(TestPreVoteMigrationWithFreeStuckPreCandidate) {
 TestRaftPtr entsWithConfig(void (*configFunc)(Config&), const vector<uint64_t> &terms) {
 	auto storage = std::make_shared<MemoryStorage>();
 	for (size_t i = 0; i < terms.size(); i++) {
-		storage->Append({ makeEntry(uint64_t(i + 1), terms[i]) });
+		storage->Append(EntryVec{ makeEntry(uint64_t(i + 1), terms[i]) });
 	}
 	auto cfg = newTestConfig(1, {}, 5, 1, storage);
 	if (configFunc) {
 		configFunc(cfg);
 	}
-	auto sm = std::make_shared<testRaft>(cfg);
+	auto sm = std::make_shared<testRaft>();
+	sm->Init(std::move(cfg));
 	sm->reset(terms[terms.size() - 1]);
 	return sm;
 }
@@ -3096,7 +3102,8 @@ TestRaftPtr votedWithConfig(void(*configFunc)(Config&), uint64_t vote, uint64_t 
 	if (configFunc) {
 		configFunc(cfg);
 	}
-	auto sm = std::make_shared<testRaft>(cfg);
+	auto sm = std::make_shared<testRaft>();
+	sm->Init(std::move(cfg));
 	sm->reset(term);
 	return sm;
 }
@@ -3167,7 +3174,9 @@ networkptr newNetworkWithConfig(void (*configFunc)(Config &), const vector<state
 			if (configFunc) {
 				configFunc(cfg);
 			}
-			npeers[id] = std::move(std::make_unique<testRaft>(cfg));
+			auto r(std::make_unique<testRaft>());
+			r->Init(std::move(cfg));
+			npeers[id] = std::move(r);
 		} else if (pTestRaft = dynamic_cast<testRaft*>(p.get()), pTestRaft) {
 			map<uint64_t, bool> learners;
 			for (auto it = pTestRaft->learnerPrs.begin(); it != pTestRaft->learnerPrs.end(); ++it) {
@@ -3477,7 +3486,7 @@ void testRecvMsgVote(MessageType msgType) {
 		}
 		sm->Vote = tt.voteFor;
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->Append({ {}, makeEntry(1, 2), makeEntry(2, 2) });
+		storage->Append(EntryVec{ {}, makeEntry(1, 2), makeEntry(2, 2) });
 		sm->raftLog = std::make_unique<raft_log>(storage, &DefaultLogger::instance());
 		sm->raftLog->unstable.offset = 3;
 
@@ -3556,7 +3565,8 @@ void mustAppendEntry(testRaft *r, vector<Entry> &&ents) {
 void testCampaignWhileLeader(bool preVote) {
 	auto cfg = newTestConfig(1, { 1 }, 5, 1, std::make_shared<MemoryStorage>());
 	cfg.PreVote = preVote;
-	auto r = std::make_unique<testRaft>(cfg);
+	auto r(std::make_unique<testRaft>());
+	r->Init(std::move(cfg));
 	BOOST_REQUIRE_EQUAL(r->state, StateFollower);
 	// We don't call campaign() directly because it comes after the check
 	// for our current state.

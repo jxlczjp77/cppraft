@@ -4,6 +4,8 @@
 #include <boost/throw_exception.hpp>
 #include <raft/read_only.hpp>
 #include <raft/logger.hpp>
+#include <raft/raft.pb.h>
+#include <raft/entrys.hpp>
 #include <map>
 #include <memory>
 
@@ -30,6 +32,8 @@ namespace raft {
 		ErrSeriaFail,
 		ErrAppendOutOfData,
 		ErrProposalDropped,
+		ErrStepLocalMsg,
+		ErrStepPeerNotFound,
 	};
 #define SUCCESS(c) (c == OK)
 	const char *error_string(ErrorCode c);
@@ -158,6 +162,21 @@ namespace raft {
 	ErrorCode stepLeader(Raft *r, Message &m);
 	typedef std::function<ErrorCode(Raft *, Message &)> stepFunc;
 
+	// SoftState provides state that is useful for logging and debugging.
+	// The state is volatile and does not need to be persisted to the WAL.
+	struct SoftState {
+		uint64_t Lead; // must use atomic operations to access; keep 64-bit aligned.
+		StateType RaftState;
+		SoftState(uint64_t lead = 0, StateType state = StateFollower): Lead(lead), RaftState(state) {}
+
+		friend bool operator==(const SoftState &a, const SoftState &b) {
+			return a.Lead == b.Lead && a.RaftState == b.RaftState;
+		}
+		friend bool operator!=(const SoftState &a, const SoftState &b) {
+			return !(a == b);
+		}
+	};
+
 	class Raft : public boost::noncopyable {
 	public:
 		uint64_t id;
@@ -231,7 +250,7 @@ namespace raft {
 
 		Logger *logger;
 	public:
-		Raft(Config &config);
+		void Init(Config &&config);
 
 		void becomeFollower(uint64_t term, uint64_t lead);
 		void becomeCandidate();
@@ -252,7 +271,14 @@ namespace raft {
 		void bcastHeartbeat();
 		void bcastHeartbeatWithCtx(const string &ctx);
 		bool checkQuorumActive();
-		bool appendEntry(vector<Entry> &ents);
+		template<class EntryContainer> bool appendEntry(EntryContainer &ents) {
+			return appendEntry((IEntrySlice &)make_slice(ents));
+		}
+		bool appendEntry(Entry &ent) {
+			std::array<Entry, 1> s = { std::move(ent) };
+			return appendEntry((IEntrySlice &)make_slice(s));
+		}
+		bool appendEntry(IEntrySlice &ents);
 		void sendAppend(uint64_t to);
 		Progress *getProgress(uint64_t id);
 		bool maybeCommit();
@@ -261,7 +287,15 @@ namespace raft {
 		void abortLeaderTransfer();
 		vector<uint64_t> nodes();
 		vector<uint64_t> learnerNodes();
-		void reduceUncommittedSize(const vector<Entry> &ents);
+		template<class EntryContainer> void reduceUncommittedSize(EntryContainer &ents) {
+			auto s = make_slice(ents);
+			reduceUncommittedSize((const IEntrySlice &)s);
+		}
+		void reduceUncommittedSize(Entry &ent) {
+			std::array<Entry, 1> s = { std::move(ent) };
+			reduceUncommittedSize((const IEntrySlice &)make_slice(s));
+		}
+		void reduceUncommittedSize(const IEntrySlice &ents);
 		void reset(uint64_t term);
 		void addNode(uint64_t id);
 		void addLearner(uint64_t id);
@@ -272,14 +306,14 @@ namespace raft {
 		void delProgress(uint64_t id);
 		bool restore(const Snapshot &s);
 		void loadState(const HardState &state);
+		SoftState softState();
+		HardState hardState();
 
 	private:
-		bool increaseUncommittedSize(const vector<Entry> &ents);
+		bool increaseUncommittedSize(const IEntrySlice &ents);
 		void forEachProgress(const std::function<void(uint64_t id, Progress *pr)> &f);
 		void restoreNode(vector<uint64_t> &nodes, bool isLearner);
 		void sendHeartbeat(uint64_t to, const string &ctx);
 		void addNodeOrLearnerNode(uint64_t id, bool isLearner);
 	};
-
-	MessageType voteRespMsgType(MessageType msgt);
 }

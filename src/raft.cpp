@@ -35,18 +35,6 @@ namespace raft {
 		return n;
 	}
 
-	// voteResponseType maps vote and prevote message types to their corresponding responses.
-	MessageType voteRespMsgType(MessageType msgt) {
-		switch (msgt) {
-		case MsgVote:
-			return MsgVoteResp;
-		case MsgPreVote:
-			return MsgPreVoteResp;
-		default:
-			BOOST_THROW_EXCEPTION(std::runtime_error((boost::format("not a vote message: %1%") % msgt).str()));
-		}
-	}
-
 	string entryString(const Entry &entry) {
 		return (boost::format("term:%1%, index : %2%, type : %3%, data: %4%") % entry.term() % entry.index() % entry.type() % entry.data()).str();
 	}
@@ -109,7 +97,7 @@ namespace raft {
 		return string();
 	}
 
-	Raft::Raft(Config &c) {
+	void Raft::Init(Config &&c) {
 		string configErr = c.validate();
 		if (!configErr.empty()) {
 			BOOST_THROW_EXCEPTION(std::runtime_error(configErr));
@@ -248,7 +236,7 @@ namespace raft {
 		// could be expensive.
 		pendingConfIndex = raftLog->lastIndex();
 
-		std::vector<Entry> emptyEnt(1);
+		Entry emptyEnt;
 		if (!appendEntry(emptyEnt)) {
 			// This won't happen because we just called reset() above.
 			fLog(logger, "empty entry was dropped");
@@ -447,9 +435,7 @@ namespace raft {
 					}
 				}
 			}
-			std::vector<Entry> ents;
-			ents.reserve(m.entries_size());
-			std::copy(m.entries().begin(), m.entries().end(), std::back_inserter(ents));
+			auto ents = make_slice(m.entries());
 			if (!r->appendEntry(ents)) {
 				return ErrProposalDropped;
 			}
@@ -1011,7 +997,7 @@ namespace raft {
 		}
 	}
 
-	bool Raft::appendEntry(vector<Entry> &es) {
+	bool Raft::appendEntry(IEntrySlice &es) {
 		uint64_t li = raftLog->lastIndex();
 		for (size_t i = 0; i < es.size(); ++i) {
 			es[i].set_term(Term);
@@ -1038,7 +1024,7 @@ namespace raft {
 	// If the new entries would exceed the limit, the method returns false. If not,
 	// the increase in uncommitted entry size is recorded and the method returns
 	// true.
-	bool Raft::increaseUncommittedSize(const vector<Entry> &ents) {
+	bool Raft::increaseUncommittedSize(const IEntrySlice &ents) {
 		uint64_t s = 0;
 		for (const Entry &e : ents) {
 			s += uint64_t(PayloadSize(e));
@@ -1087,7 +1073,7 @@ namespace raft {
 
 	// reduceUncommittedSize accounts for the newly committed entries by decreasing
 	// the uncommitted entry size limit.
-	void Raft::reduceUncommittedSize(const vector<Entry> &ents) {
+	void Raft::reduceUncommittedSize(const IEntrySlice &ents) {
 		if (uncommittedSize == 0) {
 			// Fast-path for followers, who do not track or enforce the limit.
 			return;
@@ -1116,10 +1102,7 @@ namespace raft {
 		}
 
 		uint64_t mlastIndex;
-		vector<Entry> ents;
-		ents.reserve(m.entries().size());
-		for (auto it = m.entries().begin(); it < m.entries().end(); it++)
-			ents.push_back(*it);
+		auto ents = make_slice(m.entries());
 		bool ret = raftLog->maybeAppend(m.index(), m.logterm(), m.commit(), ents, mlastIndex);
 		if (ret) {
 			MessagePtr msg = make_message(m.from(), MsgAppResp);
@@ -1487,4 +1470,17 @@ namespace raft {
 			abortLeaderTransfer();
 		}
 	}
+
+	SoftState Raft::softState() {
+		return SoftState{ lead, state };
+	}
+
+	HardState Raft::hardState() {
+		HardState hs;
+		hs.set_term(Term);
+		hs.set_vote(Vote);
+		hs.set_commit(raftLog->committed);
+		return std::move(hs);
+	}
+
 } // namespace raft

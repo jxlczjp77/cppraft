@@ -12,7 +12,16 @@ typedef std::unique_ptr<Snapshot> SnapshotPtr;
 
 Entry makeEntry(uint64_t index, uint64_t term, string &&data = string(), EntryType type = EntryNormal);
 SnapshotPtr makeSnapshot(uint64_t index, uint64_t term);
-void equal_entrys(const vector<Entry> &left, const vector<Entry> &right);
+template<class EntryVec1, class EntryVec2>
+void equal_entrys(const EntryVec1 &left, const EntryVec2 &right) {
+	BOOST_REQUIRE_EQUAL(left.size(), right.size());
+	for (size_t i = 0; i < left.size(); i++) {
+		auto &e1 = left[i];
+		auto &e2 = right[i];
+		BOOST_REQUIRE_EQUAL(e1.index(), e2.index());
+		BOOST_REQUIRE_EQUAL(e1.term(), e2.term());
+	}
+}
 unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, Logger &logger);
 string ltoa(raft_log *l);
 string diffu(const string &a, const string &b);
@@ -37,7 +46,6 @@ struct blackHole : stateMachine {
 };
 
 struct testRaft : public stateMachine, public Raft {
-	testRaft(Config &c) : Raft(c) {}
 	ErrorCode Step(Message &m) { return Raft::Step(m); }
 	vector<MessagePtr> readMessages() { return std::move(Raft::msgs); }
 };

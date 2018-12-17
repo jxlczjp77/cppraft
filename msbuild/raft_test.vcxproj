@@ -147,6 +147,7 @@
     <ClCompile Include="..\src\raft_paper_test.cpp" />
     <ClCompile Include="..\src\raft_snap_test.cpp" />
     <ClCompile Include="..\src\raft_test.cpp" />
+    <ClCompile Include="..\src\rawnode_test.cpp" />
     <ClCompile Include="..\src\storage_test.cpp" />
     <ClCompile Include="..\src\test_common.cpp" />
     <ClCompile Include="..\src\util_test.cpp" />

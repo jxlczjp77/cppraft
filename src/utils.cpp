@@ -1,5 +1,7 @@
 ﻿#include <raft/Raft.hpp>
 #include "utils.hpp"
+#include <boost/throw_exception.hpp>
+#include <boost/format.hpp>
 
 using namespace std;
 using namespace raftpb;
@@ -44,4 +46,27 @@ namespace raft {
 	size_t PayloadSize(const Entry &e) {
 		return e.data().length();
 	}
+
+	
+	bool IsLocalMsg(MessageType msgt) {
+		return msgt == MsgHup || msgt == MsgBeat || msgt == MsgUnreachable ||
+			msgt == MsgSnapStatus || msgt == MsgCheckQuorum;
+	}
+
+	bool IsResponseMsg(MessageType msgt) {
+		return msgt == MsgAppResp || msgt == MsgVoteResp || msgt == MsgHeartbeatResp || msgt == MsgUnreachable || msgt == MsgPreVoteResp;
+	}
+
+	// voteResponseType maps vote and prevote message types to their corresponding responses.
+	MessageType voteRespMsgType(MessageType msgt) {
+		switch (msgt) {
+		case MsgVote:
+			return MsgVoteResp;
+		case MsgPreVote:
+			return MsgPreVoteResp;
+		default:
+			BOOST_THROW_EXCEPTION(std::runtime_error((boost::format("not a vote message: %s") % msgt).str()));
+		}
+	}
+
 }

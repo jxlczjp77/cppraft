@@ -1,6 +1,7 @@
 ﻿#include "raft_log.hpp"
 #include "utils.hpp"
 #include <boost/format.hpp>
+#include <raft/entrys.hpp>
 
 namespace raft {
 	raft_log::raft_log(StoragePtr storage_, Logger *logger_, uint64_t maxNextEntsSize_) {
@@ -25,7 +26,7 @@ namespace raft {
 
 	// maybeAppend returns (0, false) if the entries cannot be appended. Otherwise,
 	// it returns (last index of new entries, true).
-	bool raft_log::maybeAppend(uint64_t index, uint64_t logTerm, uint64_t committed, const vector<Entry> &ents, uint64_t &lastnewi) {
+	bool raft_log::maybeAppend(uint64_t index, uint64_t logTerm, uint64_t committed, const IEntrySlice &ents, uint64_t &lastnewi) {
 		if (matchTerm(index, logTerm)) {
 			lastnewi = index + ents.size();
 			uint64_t ci = findConflict(ents);
@@ -34,7 +35,7 @@ namespace raft {
 				fLog(logger, "entry %1% conflict with committed entry [committed(%2%)]", ci, this->committed);
 			} else {
 				uint64_t offset = index + 1;
-				append({ ents.begin() + (ci - offset), ents.end() });
+				append(make_slice(ents, ci - offset));
 			}
 			commitTo(min(committed, lastnewi));
 			return true;
@@ -65,8 +66,7 @@ namespace raft {
 	void raft_log::stableTo(uint64_t i, uint64_t t) { unstable.stableTo(i, t); }
 
 	void raft_log::stableSnapTo(uint64_t i) { unstable.stableSnapTo(i); }
-
-	uint64_t raft_log::append(const vector<Entry> &ents) {
+	uint64_t raft_log::appendSlice(const IEntrySlice &ents) {
 		if (ents.empty()) {
 			return lastIndex();
 		}
@@ -120,7 +120,7 @@ namespace raft {
 		return 0;
 	}
 
-	uint64_t raft_log::findConflict(const vector<Entry> &ents) {
+	uint64_t raft_log::findConflict(const IEntrySlice &ents) {
 		for (const Entry &ne : ents) {
 			uint64_t i = ne.index();
 			uint64_t t = ne.term();
@@ -236,7 +236,7 @@ namespace raft {
 		return false;
 	}
 
-	const vector<Entry> &raft_log::unstableEntries() {
+	const EntryUnstableVec &raft_log::unstableEntries() {
 		return unstable.entries;
 	}
 

@@ -1,10 +1,8 @@
 ﻿#pragma once
-#include <raft/raft.pb.h>
-#include <vector>
+#include <raft/entrys.hpp>
+#include <raft/logger.hpp>
 
 namespace raft {
-	using namespace raftpb;
-	using namespace std;
 	class Logger;
 
 	class unstable {
@@ -20,7 +18,7 @@ namespace raft {
 		void stableTo(uint64_t i, uint64_t t);
 		void stableSnapTo(uint64_t i);
 		void restore(const Snapshot &sh);
-		void truncateAndAppend(const vector<Entry> &ents);
+		void truncateAndAppend(const IEntrySlice &ents);
 		void slice(uint64_t lo, uint64_t hi, vector<Entry> &entries);
 
 	private:
@@ -28,7 +26,7 @@ namespace raft {
 
 	public:
 		unique_ptr<Snapshot> snapshot;
-		vector<Entry> entries;
+		EntryUnstableVec entries;
 		uint64_t offset;
 		Logger *logger;
 	};

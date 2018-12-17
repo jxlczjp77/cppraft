@@ -79,7 +79,7 @@ BOOST_AUTO_TEST_CASE(TestAppend) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->Append(std::move(previousEnts));
+		storage->Append(previousEnts);
 		raft_log raftLog(storage, &DefaultLogger::instance());
 		uint64_t index = raftLog.append(tt.ents);
 		BOOST_REQUIRE_EQUAL(index, tt.windex);
@@ -201,11 +201,11 @@ BOOST_AUTO_TEST_CASE(TestCompactionSideEffects) {
 	uint64_t lastTerm = lastIndex;
 	auto storage = std::make_shared<MemoryStorage>();
 	for (uint64_t i = 1; i <= unstableIndex; i++) {
-		storage->Append({ makeEntry(i, i) });
+		storage->Append(makeEntry(i, i));
 	}
 	raft_log raftLog(storage, &DefaultLogger::instance());
 	for (uint64_t i = unstableIndex; i < lastIndex; i++) {
-		raftLog.append({ makeEntry(i + 1, i + 1) });
+		raftLog.append(makeEntry(i + 1, i + 1));
 	}
 
 	bool ok = raftLog.maybeCommit(lastIndex, lastTerm);
@@ -229,7 +229,7 @@ BOOST_AUTO_TEST_CASE(TestCompactionSideEffects) {
 	BOOST_REQUIRE_EQUAL(unstableEnts[0].index(), 751);
 
 	uint64_t prev = raftLog.lastIndex();
-	raftLog.append({ makeEntry(raftLog.lastIndex() + 1, raftLog.lastIndex() + 1) });
+	raftLog.append(makeEntry(raftLog.lastIndex() + 1, raftLog.lastIndex() + 1));
 	BOOST_REQUIRE_EQUAL(raftLog.lastIndex(), prev + 1);
 
 	vector<Entry> ents;
@@ -304,7 +304,7 @@ BOOST_AUTO_TEST_CASE(TestUnstableEnts) {
 		vector<Entry> ee{ previousEnts.begin(), (previousEnts.begin() + (tt.unstable - 1)) };
 		storage->Append(ee);
 		raft_log raftLog(storage, &DefaultLogger::instance());
-		raftLog.append({ previousEnts.begin() + (tt.unstable - 1), previousEnts.end() });
+		raftLog.append(EntryVec{ previousEnts.begin() + (tt.unstable - 1), previousEnts.end() });
 		auto ents = raftLog.unstableEntries();
 		if (!ents.empty()) {
 			raftLog.stableTo(ents[ents.size() - 1].index(), ents[ents.size() - i].term());
@@ -356,7 +356,7 @@ BOOST_AUTO_TEST_CASE(TestStableTo) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		raft_log raftLog(std::make_shared<MemoryStorage>(), &DefaultLogger::instance());
-		raftLog.append({ makeEntry(1, 1),makeEntry(2, 2) });
+		raftLog.append(EntryVec{ makeEntry(1, 1),makeEntry(2, 2) });
 		raftLog.stableTo(tt.stablei, tt.stablet);
 		BOOST_REQUIRE_EQUAL(raftLog.unstable.offset, tt.wunstable);
 	}
@@ -416,7 +416,7 @@ BOOST_AUTO_TEST_CASE(TestCompaction) {
 		try {
 			auto storage = std::make_shared<MemoryStorage>();
 			for (uint64_t i = 1; i <= tt.lastIndex; i++) {
-				storage->Append({ makeEntry(i, 0) });
+				storage->Append(makeEntry(i, 0));
 			}
 			raft_log raftLog(storage, &DefaultLogger::instance());
 			raftLog.maybeCommit(tt.lastIndex, 0);
@@ -455,7 +455,7 @@ BOOST_AUTO_TEST_CASE(TestIsOutOfBounds) {
 	storage->ApplySnapshot(*makeSnapshot(offset, 0));
 	raft_log l(storage, &DefaultLogger::instance());
 	for (uint64_t i = 1; i <= num; i++) {
-		l.append({ makeEntry(i + offset, 0) });
+		l.append(makeEntry(i + offset, 0));
 	}
 
 	uint64_t first = offset + 1;
@@ -492,7 +492,7 @@ BOOST_AUTO_TEST_CASE(TestTerm) {
 	storage->ApplySnapshot(*makeSnapshot(offset, 1));
 	raft_log l(storage, &DefaultLogger::instance());
 	for (uint64_t i = 1; i < num; i++) {
-		l.append({ makeEntry(i + offset, i) });
+		l.append(makeEntry(i + offset, i));
 	}
 
 	struct {
@@ -551,11 +551,11 @@ BOOST_AUTO_TEST_CASE(TestSlice) {
 	auto storage = std::make_shared<MemoryStorage>();
 	storage->ApplySnapshot(*makeSnapshot(offset, 0));
 	for (uint64_t i = 1; i < num / 2; i++) {
-		storage->Append({ makeEntry(offset + i, offset + i) });
+		storage->Append(makeEntry(offset + i, offset + i));
 	}
 	raft_log l(storage, &DefaultLogger::instance());
 	for (uint64_t i = num / 2; i < num; i++) {
-		l.append({ makeEntry(offset + i, offset + i) });
+		l.append(makeEntry(offset + i, offset + i));
 	}
 	const uint64_t noLimit = std::numeric_limits<uint64_t>().max();
 	struct {

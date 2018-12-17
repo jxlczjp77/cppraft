@@ -168,7 +168,7 @@ BOOST_AUTO_TEST_CASE(TestUnstableTruncateAndAppend) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
-		u.truncateAndAppend(std::move(tt.toappend));
+		u.truncateAndAppend(make_slice(tt.toappend));
 		BOOST_REQUIRE_EQUAL(u.offset, tt.woffset);
 		equal_entrys(u.entries, tt.wentries);
 	}

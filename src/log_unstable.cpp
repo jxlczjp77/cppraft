@@ -1,8 +1,9 @@
 ﻿#include "log_unstable.hpp"
 #include <raft/Raft.hpp>
+#define DEFAULT_ENTRY_LEN 100
 
 namespace raft {
-	unstable::unstable() : snapshot(nullptr) {
+	unstable::unstable() : snapshot(nullptr), entries(100) {
 	}
 
 	unstable::~unstable() {
@@ -75,20 +76,22 @@ namespace raft {
 		snapshot = std::make_unique<Snapshot>(sh);
 	}
 
-	void unstable::truncateAndAppend(const vector<Entry> &ents) {
+	void unstable::truncateAndAppend(const IEntrySlice &ents) {
 		uint64_t after = ents[0].index();
 		if (after == offset + uint64_t(entries.size())) {
-			entries.insert(entries.end(), ents.begin(), ents.end());
 		} else if (after <= offset) {
 			iLog(logger, "replace the unstable entries from index %1%", after);
-			entries = std::move(ents);
+			entries.clear();
 			offset = after;
 		} else {
 			iLog(logger, "truncate the unstable entries before index %1%", after);
 			mustCheckOutOfBounds(offset, after);
 			entries.erase(entries.begin() + (after - offset), entries.end());
-			entries.insert(entries.end(), ents.begin(), ents.end());
 		}
+		if (entries.capacity() < ents.size() + entries.size()) {
+			entries.rset_capacity(entries.capacity() * 2);
+		}
+		entries.insert(entries.end(), ents.begin(), ents.end());
 	}
 
 	void unstable::slice(uint64_t lo, uint64_t hi, vector<Entry> &out) {

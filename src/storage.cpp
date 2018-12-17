@@ -71,7 +71,7 @@ namespace raft {
 		return entries[0].index() + entries.size() - 1;
 	}
 
-	ErrorCode MemoryStorage::Append(const vector<Entry> &ents) {
+	ErrorCode MemoryStorage::AppendSlice(const IEntrySlice &ents) {
 		if (ents.empty()) {
 			return OK;
 		}

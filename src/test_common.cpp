@@ -27,7 +27,7 @@ SnapshotPtr makeSnapshot(uint64_t index, uint64_t term) {
 unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, Logger &logger) {
 	unstable u;
 	u.snapshot = std::move(snapshot);
-	u.entries = std::move(entries);
+	u.entries.insert(u.entries.begin(), entries.begin(), entries.end());
 	u.offset = offset;
 	u.logger = &logger;
 	return std::move(u);
@@ -60,17 +60,6 @@ MessagePtr make_message(
 	return std::move(msg);
 }
 
-void equal_entrys(const vector<Entry> &left, const vector<Entry> &right) {
-	BOOST_REQUIRE_EQUAL(left.size(), right.size());
-	for (size_t i = 0; i < left.size(); i++) {
-		auto &e1 = left[i];
-		auto &e2 = right[i];
-		BOOST_REQUIRE_EQUAL(e1.index(), e2.index());
-		BOOST_REQUIRE_EQUAL(e1.term(), e2.term());
-	}
-	auto l = &DefaultLogger::instance();
-}
-
 string ltoa(raft_log *l) {
 	auto s = (boost::format("committed: %d\n") % l->committed).str();
 	s += (boost::format("applied:  %d\n") % l->applied).str();
@@ -82,7 +71,6 @@ string ltoa(raft_log *l) {
 	}
 	return s;
 }
-
 
 string diffu(const string &a, const string &b) {
 	if (a == b) {

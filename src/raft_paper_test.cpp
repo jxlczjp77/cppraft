@@ -460,7 +460,7 @@ BOOST_AUTO_TEST_CASE(TestFollowerAppendEntries) {
 	};
 	for (auto &tt : tests) {
 		auto storage = std::make_shared<MemoryStorage>();
-		storage->Append({makeEntry(1, 1), makeEntry(2, 2)});
+		storage->Append(EntryVec{makeEntry(1, 1), makeEntry(2, 2)});
 		auto r = newTestRaft(1, { 1, 2, 3 }, 10, 1, storage);
 		r->becomeFollower(2, 2);
 

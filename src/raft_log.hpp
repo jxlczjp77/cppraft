@@ -2,6 +2,7 @@
 #include <raft/Storage.hpp>
 #include <raft/Raft.hpp>
 #include "log_unstable.hpp"
+#include <raft/entrys.hpp>
 
 namespace raft {
 	class raft_log {
@@ -11,18 +12,33 @@ namespace raft {
 
 		ErrorCode entries(vector<Entry> &out, uint64_t i, uint64_t maxsize = noLimit);
 		ErrorCode slice(vector<Entry> &out, uint64_t lo, uint64_t hi, uint64_t maxSize = noLimit);
-		bool maybeAppend(uint64_t index, uint64_t logTerm, uint64_t committed, const vector<Entry> &ents, uint64_t &lastnewi);
+		template<class EntryContainer>
+		bool maybeAppend(uint64_t index, uint64_t logTerm, uint64_t committed, const EntryContainer &ents, uint64_t &lastnewi) {
+			return maybeAppend(index, logTerm, committed, (const IEntrySlice &)make_slice(ents), lastnewi);
+		}
+		bool maybeAppend(uint64_t index, uint64_t logTerm, uint64_t committed, const IEntrySlice &ents, uint64_t &lastnewi);
 		bool matchTerm(uint64_t i, uint64_t term);
 		bool maybeCommit(uint64_t maxIndex, uint64_t term);
-		const vector<Entry> &unstableEntries();
+		const EntryUnstableVec &unstableEntries();
 		bool hasNextEnts();
 		uint64_t lastTerm();
 		vector<Entry> nextEnts();
 		vector<Entry> allEntries();
 		ErrorCode mustCheckOutOfBounds(uint64_t lo, uint64_t hi);
 		ErrorCode term(uint64_t i, uint64_t &t);
-		uint64_t append(const vector<Entry> &ents);
-		uint64_t findConflict(const vector<Entry> &ents);
+		uint64_t appendSlice(const IEntrySlice &ents);
+		template<class EntryContainer> uint64_t append(const EntryContainer &ents) {
+			return appendSlice(make_slice(ents));
+		}
+		template<> uint64_t append<Entry>(const Entry &ent) {
+			std::array<Entry, 1> s = { std::move(ent) };
+			return appendSlice(make_slice(s));
+		}
+		template<class EntryContainer>
+		uint64_t findConflict(const EntryContainer &ents) {
+			return findConflict((const IEntrySlice &)make_slice(ents));
+		}
+		uint64_t findConflict(const IEntrySlice &ents);
 		uint64_t firstIndex();
 		uint64_t lastIndex();
 		void restore(const Snapshot &s);

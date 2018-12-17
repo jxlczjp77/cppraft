@@ -84,19 +84,26 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\src\logger.cpp" />
+    <ClCompile Include="..\src\node.cpp" />
     <ClCompile Include="..\src\progress.cpp" />
     <ClCompile Include="..\src\raft.cpp" />
     <ClCompile Include="..\src\raft.pb.cc" />
     <ClCompile Include="..\src\raft_log.cpp" />
+    <ClCompile Include="..\src\rawnode.cpp" />
     <ClCompile Include="..\src\read_only.cpp" />
     <ClCompile Include="..\src\log_unstable.cpp" />
+    <ClCompile Include="..\src\status.cpp" />
     <ClCompile Include="..\src\storage.cpp" />
     <ClCompile Include="..\src\utils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\raft\logger.hpp" />
+    <ClInclude Include="..\include\raft\node.hpp" />
     <ClInclude Include="..\include\raft\raft.hpp" />
+    <ClInclude Include="..\include\raft\rawnode.hpp" />
     <ClInclude Include="..\include\raft\read_only.hpp" />
+    <ClInclude Include="..\include\raft\entrys.hpp" />
+    <ClInclude Include="..\include\raft\status.hpp" />
     <ClInclude Include="..\include\raft\storage.hpp" />
     <ClInclude Include="..\src\progress.hpp" />
     <ClInclude Include="..\src\raft_log.hpp" />

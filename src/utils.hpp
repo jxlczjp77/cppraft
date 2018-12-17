@@ -8,4 +8,7 @@ namespace raft {
 	bool IsEmptySnap(const Snapshot &sp);
 	void limitSize(std::vector <raftpb::Entry> &ents, uint64_t maxSize);
 	size_t PayloadSize(const Entry &e);
+	bool IsLocalMsg(MessageType msgt);
+	bool IsResponseMsg(MessageType msgt);
+	MessageType voteRespMsgType(MessageType msgt);
 }

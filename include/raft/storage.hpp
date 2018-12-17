@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <raft/raft.pb.h>
 #include <raft/Raft.hpp>
+#include <raft/entrys.hpp>
 
 namespace raft {
 	using namespace raftpb;
@@ -26,8 +27,14 @@ namespace raft {
 		virtual ErrorCode LastIndex(uint64_t &i);
 		virtual ErrorCode FirstIndex(uint64_t &i);
 		virtual ErrorCode Snapshot(raftpb::Snapshot **sn);
-
-		ErrorCode Append(const vector<Entry> &entries);
+		template<class EntryContainer> ErrorCode Append(const EntryContainer &ents) {
+			return AppendSlice(make_slice(ents));
+		}
+		template<> ErrorCode Append<Entry>(const Entry &ent) {
+			std::array<Entry, 1> s = { std::move(ent) };
+			return AppendSlice(make_slice(s));
+		}
+		ErrorCode AppendSlice(const IEntrySlice &ents);
 		ErrorCode ApplySnapshot(const raftpb::Snapshot &snapshot);
 		ErrorCode CreateSnapshot(uint64_t i, const ConfState *cs, const string &data, raftpb::Snapshot &sh);
 		ErrorCode Compact(uint64_t compactIndex);
