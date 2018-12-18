@@ -10,8 +10,8 @@ namespace raft {
 		raft_log(StoragePtr storage, Logger *logger, uint64_t maxNextEntsSize = noLimit);
 		~raft_log();
 
-		ErrorCode entries(vector<Entry> &out, uint64_t i, uint64_t maxsize = noLimit);
-		ErrorCode slice(vector<Entry> &out, uint64_t lo, uint64_t hi, uint64_t maxSize = noLimit);
+		Result<EntryRange> entries(uint64_t i, uint64_t maxsize = noLimit);
+		Result<EntryRange> slice(uint64_t lo, uint64_t hi, uint64_t maxSize = noLimit);
 		template<class EntryContainer>
 		bool maybeAppend(uint64_t index, uint64_t logTerm, uint64_t committed, const EntryContainer &ents, uint64_t &lastnewi) {
 			return maybeAppend(index, logTerm, committed, (const IEntrySlice &)make_slice(ents), lastnewi);
@@ -22,10 +22,10 @@ namespace raft {
 		const EntryUnstableVec &unstableEntries();
 		bool hasNextEnts();
 		uint64_t lastTerm();
-		vector<Entry> nextEnts();
-		vector<Entry> allEntries();
+		EntryRange nextEnts();
+		EntryRange allEntries();
 		ErrorCode mustCheckOutOfBounds(uint64_t lo, uint64_t hi);
-		ErrorCode term(uint64_t i, uint64_t &t);
+		Result<uint64_t> term(uint64_t i);
 		uint64_t appendSlice(const IEntrySlice &ents);
 		template<class EntryContainer> uint64_t append(const EntryContainer &ents) {
 			return appendSlice(make_slice(ents));
@@ -48,8 +48,8 @@ namespace raft {
 		void appliedTo(uint64_t i);
 		void stableTo(uint64_t i, uint64_t t);
 		void stableSnapTo(uint64_t i);
-		uint64_t zeroTermOnErrCompacted(uint64_t t, ErrorCode err);
-		ErrorCode snapshot(Snapshot **sn);
+		uint64_t zeroTermOnErrCompacted(const Result<uint64_t> &t);
+		Result<Snapshot*> snapshot();
 
 	public:
 		StoragePtr storage;

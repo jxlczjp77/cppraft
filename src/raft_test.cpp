@@ -1832,9 +1832,8 @@ BOOST_AUTO_TEST_CASE(TestReadOnlyForNewLeader) {
 	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
 	BOOST_REQUIRE_EQUAL(sm->raftLog->committed, 4);
 
-	uint64_t ter;
-	auto err = sm->raftLog->term(sm->raftLog->committed, ter);
-	auto lastLogTerm = sm->raftLog->zeroTermOnErrCompacted(ter, err);
+	auto ter = sm->raftLog->term(sm->raftLog->committed);
+	auto lastLogTerm = sm->raftLog->zeroTermOnErrCompacted(ter);
 	BOOST_REQUIRE_EQUAL(lastLogTerm, sm->Term);
 
 	// Ensure peer a accepts read only request after it commits a entry at its term.
@@ -2111,9 +2110,8 @@ BOOST_AUTO_TEST_CASE(TestRestore) {
 	BOOST_REQUIRE_EQUAL(sm->restore(*s), true);
 	BOOST_REQUIRE_EQUAL(sm->raftLog->lastIndex(), s->metadata().index());
 
-	uint64_t t;
-	auto err = sm->raftLog->term(s->metadata().index(), t);
-	BOOST_REQUIRE_EQUAL(mustTerm(t, err), s->metadata().term());
+	auto t = sm->raftLog->term(s->metadata().index());
+	BOOST_REQUIRE_EQUAL(mustTerm(t), s->metadata().term());
 
 	auto sg = sm->nodes();
 	auto &ss = s->metadata().conf_state();
@@ -2137,9 +2135,8 @@ BOOST_AUTO_TEST_CASE(TestRestoreWithLearner) {
 	auto sm = newTestLearnerRaft(3, { 1, 2 }, { 3 }, 8, 2, storage);
 	BOOST_REQUIRE_EQUAL(sm->restore(*s), true);
 	BOOST_REQUIRE_EQUAL(sm->raftLog->lastIndex(), s->metadata().index());
-	uint64_t t;
-	auto err = sm->raftLog->term(s->metadata().index(), t);
-	BOOST_REQUIRE_EQUAL(mustTerm(t, err), s->metadata().term());
+	auto t = sm->raftLog->term(s->metadata().index());
+	BOOST_REQUIRE_EQUAL(mustTerm(t), s->metadata().term());
 	auto sg = sm->nodes();
 	BOOST_REQUIRE_EQUAL(sg.size(), s->metadata().conf_state().nodes().size());
 	auto lns = sm->learnerNodes();
@@ -2359,10 +2356,9 @@ BOOST_AUTO_TEST_CASE(TestStepIgnoreConfig) {
 	auto pendingConfIndex = r->pendingConfIndex;
 	r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0,0,"",EntryConfChange) }));
 	vector<Entry> wents = { makeEntry(3, 1, "", EntryNormal) };
-	vector<Entry> ents;
-	auto err = r->raftLog->entries(ents, index + 1, noLimit);
-	BOOST_REQUIRE_EQUAL(err, OK);
-	equal_entrys(ents, wents);
+	auto ents = r->raftLog->entries(index + 1, noLimit);
+	BOOST_REQUIRE_EQUAL(ents.err, OK);
+	equal_entrys(ents.value, wents);
 	BOOST_REQUIRE_EQUAL(r->pendingConfIndex, pendingConfIndex);
 }
 
@@ -3422,13 +3418,12 @@ void testVoteFromAnyState(MessageType vt) {
 }
 
 // nextEnts returns the appliable entries and updates the applied index
-vector<Entry> nextEnts(testRaft *r, Storage *s) {
+EntryRange nextEnts(testRaft *r, Storage *s) {
 	// Transfer all unstable entries to "stable" storage.
-	vector<Entry> ents;
 	dynamic_cast<MemoryStorage*>(s)->Append(r->raftLog->unstableEntries());
 	r->raftLog->stableTo(r->raftLog->lastIndex(), r->raftLog->lastTerm());
 
-	ents = r->raftLog->nextEnts();
+	auto ents = r->raftLog->nextEnts();
 	r->raftLog->appliedTo(r->raftLog->committed);
 	return std::move(ents);
 }

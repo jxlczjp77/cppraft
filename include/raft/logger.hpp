@@ -48,8 +48,14 @@ namespace raft {
 	};
 
 	class Logger {
+	protected:
+		LogLevel logLevel;
+
 	public:
+		Logger() :logLevel(LogLevel::all) {}
 		virtual void log(const LogContext &ctx, const string &msg) = 0;
+		LogLevel setLogLevel(LogLevel lv) { auto o = logLevel; logLevel = lv; return o; }
+		LogLevel getLogLevel() { return logLevel; }
 	};
 
 #define LOG_FORMAT_ARGS(r, unused, base) % (base)

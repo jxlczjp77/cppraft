@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include <raft/entrys.hpp>
+#include <raft/raft.hpp>
 #include <raft/logger.hpp>
 
 namespace raft {
@@ -12,14 +12,14 @@ namespace raft {
 		~unstable();
 		unstable(unstable &&u);
 
-		bool maybeFirstIndex(uint64_t &i) const;
-		bool maybeLastIndex(uint64_t &i) const;
-		bool maybeTerm(uint64_t i, uint64_t &term) const;
+		Result<uint64_t> maybeFirstIndex() const;
+		Result<uint64_t> maybeLastIndex() const;
+		Result<uint64_t> maybeTerm(uint64_t i) const;
 		void stableTo(uint64_t i, uint64_t t);
 		void stableSnapTo(uint64_t i);
 		void restore(const Snapshot &sh);
 		void truncateAndAppend(const IEntrySlice &ents);
-		void slice(uint64_t lo, uint64_t hi, vector<Entry> &entries);
+		IEntrySlicePtr slice(uint64_t lo, uint64_t hi);
 
 	private:
 		void mustCheckOutOfBounds(uint64_t lo, uint64_t hi);

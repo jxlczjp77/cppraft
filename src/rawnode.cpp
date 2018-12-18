@@ -11,16 +11,15 @@ namespace raft {
 		}
 		auto r = std::make_unique<Raft>();
 		r->Init(std::move(config));
-		uint64_t lastIndex;
-		ErrorCode err = config.Storage->LastIndex(lastIndex);
-		if (err != OK) {
+		auto lastIndex = config.Storage->LastIndex();
+		if (lastIndex.err != OK) {
 			abort(); // TODO(bdarnell)
 		}
 		// If the log is empty, this is a new RawNode (like StartNode); otherwise it's
 		// restoring an existing RawNode (like RestartNode).
 		// TODO(bdarnell): rethink RawNode initialization and whether the application needs
 		// to be able to tell us when it expects the RawNode to exist.
-		if (lastIndex == 0) {
+		if (lastIndex.value == 0) {
 			r->becomeFollower(1, None);
 			vector<Entry> ents;
 			ents.reserve(peers.size());
@@ -29,7 +28,7 @@ namespace raft {
 				ConfChange cc;
 				cc.set_type(ConfChangeAddNode);
 				cc.set_nodeid(peer.ID);
-				cc.set_context(peer.Context);
+				if (!peer.Context.empty()) cc.set_context(peer.Context);
 				auto data = cc.SerializeAsString();
 				Entry tmp;
 				tmp.set_type(EntryConfChange);
@@ -47,7 +46,7 @@ namespace raft {
 
 		// Set the initial hard and soft states after performing all initialization.
 		prevSoftSt = r->softState();
-		if (lastIndex == 0) {
+		if (lastIndex.value == 0) {
 			prevHardSt = HardState();
 		} else {
 			prevHardSt = r->hardState();
@@ -60,10 +59,12 @@ namespace raft {
 	}
 
 	void RawNode::commitReady(raft::Ready &rd) {
-		prevSoftSt = rd.SoftState;
+		if (rd.SoftState) {
+			prevSoftSt = *rd.SoftState;
+		}
 
 		if (!IsEmptyHardState(rd.HardState)) {
-			prevHardSt = rd.HardState;
+			prevHardSt = *rd.HardState;
 		}
 
 		// If entries were applied (or a snapshot), update our cursor for
@@ -80,7 +81,7 @@ namespace raft {
 			this->raft->raftLog->stableTo(e.index(), e.term());
 		}
 		if (!IsEmptySnap(rd.Snapshot)) {
-			this->raft->raftLog->stableSnapTo(rd.Snapshot.metadata().index());
+			this->raft->raftLog->stableSnapTo(rd.Snapshot->metadata().index());
 		}
 		if (!rd.ReadStates.empty()) {
 			this->raft->readStates.clear();

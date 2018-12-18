@@ -83,10 +83,9 @@ BOOST_AUTO_TEST_CASE(TestAppend) {
 		raft_log raftLog(storage, &DefaultLogger::instance());
 		uint64_t index = raftLog.append(tt.ents);
 		BOOST_REQUIRE_EQUAL(index, tt.windex);
-		vector<Entry> ents;
-		auto err = raftLog.entries(ents, 1);
-		BOOST_REQUIRE_EQUAL(err, OK);
-		equal_entrys(ents, tt.wents);
+		auto ents = raftLog.entries(1);
+		BOOST_REQUIRE_EQUAL(ents.err, OK);
+		equal_entrys(ents.value, tt.wents);
 		BOOST_REQUIRE_EQUAL(raftLog.unstable.offset, tt.wunstable);
 	}
 }
@@ -183,10 +182,9 @@ BOOST_AUTO_TEST_CASE(TestLogMaybeAppend) {
 			BOOST_REQUIRE_EQUAL(gappend, tt.wappend);
 			BOOST_REQUIRE_EQUAL(gcommit, tt.wcommit);
 			if (gappend && !tt.ents.empty()) {
-				vector<Entry> gents;
-				auto err = raftLog.slice(gents, raftLog.lastIndex() - tt.ents.size() + 1, raftLog.lastIndex() + 1);
-				BOOST_REQUIRE_EQUAL(err, OK);
-				equal_entrys(gents, tt.ents);
+				auto gents = raftLog.slice(raftLog.lastIndex() - tt.ents.size() + 1, raftLog.lastIndex() + 1);
+				BOOST_REQUIRE_EQUAL(gents.err, OK);
+				equal_entrys(gents.value, tt.ents);
 			}
 		} catch (const std::runtime_error &) {
 			BOOST_REQUIRE_EQUAL(tt.wpanic, true);
@@ -215,9 +213,8 @@ BOOST_AUTO_TEST_CASE(TestCompactionSideEffects) {
 	storage->Compact(offset);
 	BOOST_REQUIRE_EQUAL(raftLog.lastIndex(), lastIndex);
 	for (uint64_t j = offset; j <= raftLog.lastIndex(); j++) {
-		uint64_t t;
-		auto err = raftLog.term(j, t);
-		BOOST_REQUIRE_EQUAL(mustTerm(t, err), j);
+		auto t = raftLog.term(j);
+		BOOST_REQUIRE_EQUAL(mustTerm(t), j);
 	}
 
 	for (uint64_t j = offset; j <= raftLog.lastIndex(); j++) {
@@ -232,10 +229,9 @@ BOOST_AUTO_TEST_CASE(TestCompactionSideEffects) {
 	raftLog.append(makeEntry(raftLog.lastIndex() + 1, raftLog.lastIndex() + 1));
 	BOOST_REQUIRE_EQUAL(raftLog.lastIndex(), prev + 1);
 
-	vector<Entry> ents;
-	auto err = raftLog.entries(ents, raftLog.lastIndex());
-	BOOST_REQUIRE_EQUAL(err, OK);
-	BOOST_REQUIRE_EQUAL(ents.size(), 1);
+	auto ents = raftLog.entries(raftLog.lastIndex());
+	BOOST_REQUIRE_EQUAL(ents.err, OK);
+	BOOST_REQUIRE_EQUAL(ents.value.size(), 1);
 }
 
 BOOST_AUTO_TEST_CASE(TestHasNextEnts) {
@@ -423,7 +419,7 @@ BOOST_AUTO_TEST_CASE(TestCompaction) {
 			raftLog.appliedTo(raftLog.committed);
 			for (size_t j = 0; j < tt.compact.size(); j++) {
 				auto err = storage->Compact(tt.compact[j]);
-				if (!SUCCESS(err)) {
+				if (err != OK) {
 					BOOST_REQUIRE_EQUAL(tt.wallow, false);
 					continue;
 				}
@@ -444,9 +440,8 @@ BOOST_AUTO_TEST_CASE(TestLogRestore) {
 	BOOST_REQUIRE_EQUAL(raftLog.firstIndex(), index + 1);
 	BOOST_REQUIRE_EQUAL(raftLog.committed, index);
 	BOOST_REQUIRE_EQUAL(raftLog.unstable.offset, index + 1);
-	uint64_t t;
-	raftLog.term(index, t);
-	BOOST_REQUIRE_EQUAL(t, term);
+	auto t = raftLog.term(index);
+	BOOST_REQUIRE_EQUAL(t.value, term);
 }
 
 BOOST_AUTO_TEST_CASE(TestIsOutOfBounds) {
@@ -479,7 +474,7 @@ BOOST_AUTO_TEST_CASE(TestIsOutOfBounds) {
 			auto err = l.mustCheckOutOfBounds(tt.lo, tt.hi);
 			BOOST_REQUIRE_EQUAL(tt.wpanic, false);
 			BOOST_REQUIRE_EQUAL(err == ErrCompacted, tt.wErrCompacted);
-			BOOST_REQUIRE_EQUAL(!SUCCESS(err), tt.wErrCompacted);
+			BOOST_REQUIRE_EQUAL(err != OK, tt.wErrCompacted);
 		} catch (const std::runtime_error &) {
 			BOOST_REQUIRE_EQUAL(tt.wpanic, true);
 		}
@@ -507,9 +502,8 @@ BOOST_AUTO_TEST_CASE(TestTerm) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		uint64_t t;
-		auto err = l.term(tt.index, t);
-		auto w = mustTerm(t, err);
+		auto t = l.term(tt.index);
+		auto w = mustTerm(t);
 		BOOST_REQUIRE_EQUAL(tt.w, w);
 	}
 }
@@ -536,9 +530,8 @@ BOOST_AUTO_TEST_CASE(TestTermWithUnstableSnapshot) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		uint64_t t;
-		auto err = l.term(tt.index, t);
-		auto w = mustTerm(t, err);
+		auto t = l.term(tt.index);
+		auto w = mustTerm(t);
 		BOOST_REQUIRE_EQUAL(tt.w, w);
 	}
 }
@@ -586,11 +579,10 @@ BOOST_AUTO_TEST_CASE(TestSlice) {
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
 		try {
-			vector<Entry> g;
-			auto err = l.slice(g, tt.from, tt.to, tt.limit);
-			BOOST_REQUIRE_EQUAL(tt.from <= offset && err != ErrCompacted, false);
-			BOOST_REQUIRE_EQUAL(tt.from > offset && err != OK, false);
-			equal_entrys(g, tt.w);
+			auto g = l.slice(tt.from, tt.to, tt.limit);
+			BOOST_REQUIRE_EQUAL(tt.from <= offset && g.err != ErrCompacted, false);
+			BOOST_REQUIRE_EQUAL(tt.from > offset && g.err != OK, false);
+			equal_entrys(g.value, tt.w);
 		} catch (const runtime_error &) {
 			BOOST_REQUIRE_EQUAL(tt.wpanic, true);
 		}

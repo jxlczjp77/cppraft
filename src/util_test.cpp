@@ -21,7 +21,7 @@ BOOST_AUTO_TEST_CASE(TestLimitSize) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		vector<Entry> tmp{ ents };
+		auto tmp = make_slice(ents);
 		limitSize(tmp, tt.maxsize);
 		equal_entrys(tmp, tt.wentries);
 	}

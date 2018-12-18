@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <raft/raft.hpp>
 #include <raft/entrys.hpp>
+#include <boost/optional.hpp>
 
 namespace raft
 {
@@ -26,12 +27,12 @@ struct Ready
 	// The current volatile state of a Node.
 	// SoftState will be nil if there is no update.
 	// It is not required to consume or store SoftState.
-	SoftState SoftState;
+	boost::optional<SoftState> SoftState;
 
 	// The current state of a Node to be saved to stable storage BEFORE
 	// Messages are sent.
 	// HardState will be equal to empty state if there is no update.
-	HardState HardState;
+	boost::optional<HardState> HardState;
 
 	// ReadStates can be used for node to serve linearizable read requests locally
 	// when its applied index is greater than the index in ReadState.
@@ -44,12 +45,12 @@ struct Ready
 	EntrySlice<EntryUnstableVec> Entries;
 
 	// Snapshot specifies the snapshot to be saved to stable storage.
-	Snapshot Snapshot;
+	boost::optional<Snapshot> Snapshot;
 
 	// CommittedEntries specifies entries to be committed to a
 	// store/state-machine. These have previously been committed to stable
 	// store.
-	vector<Entry> CommittedEntries;
+	EntryRange CommittedEntries;
 
 	// Messages specifies outbound messages to be sent AFTER Entries are
 	// committed to stable storage.

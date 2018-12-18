@@ -8,11 +8,11 @@ namespace raft {
 	class Storage {
 	public:
 		virtual ErrorCode InitialState(HardState &hs, ConfState &cs) = 0;
-		virtual ErrorCode Entries(uint64_t lo, uint64_t hi, uint64_t max_size, vector<Entry> &out) = 0;
-		virtual ErrorCode Term(uint64_t i, uint64_t &t) = 0;
-		virtual ErrorCode LastIndex(uint64_t &i) = 0;
-		virtual ErrorCode FirstIndex(uint64_t &i) = 0;
-		virtual ErrorCode Snapshot(Snapshot **sn) = 0;
+		virtual Result<IEntrySlicePtr> Entries(uint64_t lo, uint64_t hi, uint64_t max_size) = 0;
+		virtual Result<uint64_t> Term(uint64_t i) = 0;
+		virtual Result<uint64_t> LastIndex() = 0;
+		virtual Result<uint64_t> FirstIndex() = 0;
+		virtual Result<raftpb::Snapshot*> Snapshot() = 0;
 	};
 	typedef std::shared_ptr<Storage> StoragePtr;
 
@@ -22,11 +22,11 @@ namespace raft {
 		~MemoryStorage();
 
 		virtual ErrorCode InitialState(HardState &hs, ConfState &cs);
-		virtual ErrorCode Entries(uint64_t lo, uint64_t hi, uint64_t max_size, vector<Entry> &out);
-		virtual ErrorCode Term(uint64_t i, uint64_t &t);
-		virtual ErrorCode LastIndex(uint64_t &i);
-		virtual ErrorCode FirstIndex(uint64_t &i);
-		virtual ErrorCode Snapshot(raftpb::Snapshot **sn);
+		virtual Result<IEntrySlicePtr> Entries(uint64_t lo, uint64_t hi, uint64_t max_size);
+		virtual Result<uint64_t> Term(uint64_t i);
+		virtual Result<uint64_t> LastIndex();
+		virtual Result<uint64_t> FirstIndex();
+		virtual Result<raftpb::Snapshot*> Snapshot();
 		template<class EntryContainer> ErrorCode Append(const EntryContainer &ents) {
 			return AppendSlice(make_slice(ents));
 		}

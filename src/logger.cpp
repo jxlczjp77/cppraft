@@ -70,6 +70,9 @@ namespace raft {
 	}
 
 	void DefaultLogger::log(const LogContext &ctx, const string &msg) {
+		if (ctx.GetLogLevel() < logLevel) {
+			return;
+		}
 		std::cout
 			<< "[" << ctx.GetLogLevel().ToString() << " " << ctx.ToString() << "] "
 			<< msg << std::endl;

@@ -11,7 +11,7 @@ namespace raft {
 		return "";
 	}
 
-	void limitSize(vector<Entry> &ents, uint64_t maxSize) {
+	void limitSize(IEntrySlice &ents, uint64_t maxSize) {
 		if (!ents.empty()) {
 			size_t size = ents[0].ByteSize();
 			size_t limit;
@@ -21,7 +21,7 @@ namespace raft {
 					break;
 				}
 			}
-			ents.erase(ents.begin() + limit, ents.end());
+			ents.truncate(limit);
 		}
 	}
 
@@ -32,13 +32,13 @@ namespace raft {
 	const HardState emptyState;
 
 	// IsEmptyHardState returns true if the given HardState is empty.
-	bool IsEmptyHardState(const HardState &st) {
-		return isHardStateEqual(st, emptyState);
+	bool IsEmptyHardState(const boost::optional<HardState> &st) {
+		return !st.has_value() || isHardStateEqual(*st, emptyState);
 	}
 
 	// IsEmptySnap returns true if the given Snapshot is empty.
-	bool IsEmptySnap(const Snapshot &sp) {
-		return sp.metadata().index() == 0;
+	bool IsEmptySnap(const boost::optional<Snapshot> &sp) {
+		return !sp.has_value() || sp->metadata().index() == 0;
 	}
 
 	// PayloadSize is the size of the payload of this Entry. Notably, it does not

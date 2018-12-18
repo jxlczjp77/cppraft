@@ -83,6 +83,7 @@
     <Lib />
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\entrys.cpp" />
     <ClCompile Include="..\src\logger.cpp" />
     <ClCompile Include="..\src\node.cpp" />
     <ClCompile Include="..\src\progress.cpp" />

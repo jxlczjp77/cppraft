@@ -15,50 +15,44 @@ namespace raft {
 		u.logger = nullptr;
 	}
 
-	bool unstable::maybeFirstIndex(uint64_t &i) const {
+	Result<uint64_t> unstable::maybeFirstIndex() const {
 		if (snapshot) {
-			i = snapshot->metadata().index() + 1;
-			return true;
+			return { snapshot->metadata().index() + 1 };
 		}
-		i = 0;
-		return false;
+		return { 0, ErrFalse };
 	}
 
-	bool unstable::maybeLastIndex(uint64_t &i) const {
+	Result<uint64_t> unstable::maybeLastIndex() const {
 		if (!entries.empty()) {
-			i = offset + uint64_t(entries.size()) - 1;
-			return true;
+			return { offset + uint64_t(entries.size()) - 1 };
 		}
 		if (snapshot) {
-			i = snapshot->metadata().index();
-			return true;
+			return { snapshot->metadata().index() };
 		}
-		i = 0;
-		return false;
+		return { 0, ErrFalse };
 	}
 
-	bool unstable::maybeTerm(uint64_t i, uint64_t &term) const {
-		uint64_t last;
+	Result<uint64_t> unstable::maybeTerm(uint64_t i) const {
 		if (i < offset) {
 			if (snapshot && snapshot->metadata().index() == i) {
-				term = snapshot->metadata().term();
-				return true;
+				return { snapshot->metadata().term() };
 			}
-		} else if (maybeLastIndex(last) && i <= last) {
-			term = entries[i - offset].term();
-			return true;
+		} else {
+			auto last = maybeLastIndex();
+			if (last.Ok() && i <= last.value) {
+				return { entries[i - offset].term() };
+			}
 		}
-		term = 0;
-		return false;
+		return { 0, ErrFalse };
 	}
 
 	void unstable::stableTo(uint64_t i, uint64_t t) {
-		uint64_t gt;
-		if (!maybeTerm(i, gt)) {
+		auto gt = maybeTerm(i);
+		if (!gt.Ok()) {
 			return;
 		}
 
-		if (gt == t && i >= offset) {
+		if (gt.value == t && i >= offset) {
 			entries.erase(entries.begin(), entries.begin() + (i + 1 - offset));
 			offset = i + 1;
 		}
@@ -94,9 +88,9 @@ namespace raft {
 		entries.insert(entries.end(), ents.begin(), ents.end());
 	}
 
-	void unstable::slice(uint64_t lo, uint64_t hi, vector<Entry> &out) {
+	IEntrySlicePtr unstable::slice(uint64_t lo, uint64_t hi) {
 		mustCheckOutOfBounds(lo, hi);
-		out.insert(out.end(), entries.begin() + (lo - offset), entries.begin() + (hi - offset));
+		return std::make_unique<EntrySlice<EntryUnstableVec>>(entries, lo - offset, hi - offset);
 	}
 
 	void unstable::mustCheckOutOfBounds(uint64_t lo, uint64_t hi) {

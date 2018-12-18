@@ -31,10 +31,9 @@ BOOST_AUTO_TEST_CASE(TestStorageTerm) {
 	for (auto &tt : tests) {
 		auto s = std::make_shared<MemoryStorage>(ents);
 		try {
-			uint64_t term;
-			auto err = s->Term(tt.i, term);
-			BOOST_REQUIRE_EQUAL(err, tt.werr);
-			BOOST_REQUIRE_EQUAL(term, tt.wterm);
+			auto term = s->Term(tt.i);
+			BOOST_REQUIRE_EQUAL(term.err, tt.werr);
+			BOOST_REQUIRE_EQUAL(term.value, tt.wterm);
 		} catch (const std::runtime_error &) {
 			BOOST_REQUIRE_EQUAL(true, tt.wpanic);
 		}
@@ -68,10 +67,13 @@ BOOST_AUTO_TEST_CASE(TestStorageEntries) {
 
 	for (auto &tt : tests) {
 		auto s = std::make_shared<MemoryStorage>(ents);
-		vector<Entry> entries;
-		auto err = s->Entries(tt.lo, tt.hi, tt.maxsize, entries);
-		BOOST_REQUIRE_EQUAL(err, tt.werr);
-		equal_entrys(entries, tt.wentries);
+		auto entries = s->Entries(tt.lo, tt.hi, tt.maxsize);
+		BOOST_REQUIRE_EQUAL(entries.err, tt.werr);
+		if (entries.Ok()) {
+			equal_entrys(*entries.value, tt.wentries);
+		} else {
+			BOOST_REQUIRE_EQUAL(tt.wentries.empty(), true);
+		}
 	}
 }
 
@@ -79,30 +81,28 @@ BOOST_AUTO_TEST_CASE(TestStorageLastIndex) {
 	vector<Entry> ents = { makeEntry(3, 3), makeEntry(4, 4), makeEntry(5, 5) };
 	auto s = std::make_shared<MemoryStorage>(ents);
 
-	uint64_t last;
-	auto err = s->LastIndex(last);
-	BOOST_REQUIRE_EQUAL(err, OK);
-	BOOST_REQUIRE_EQUAL(last, 5);
+	auto last = s->LastIndex();
+	BOOST_REQUIRE_EQUAL(last.err, OK);
+	BOOST_REQUIRE_EQUAL(last.value, 5);
 
 	s->Append(EntryVec{ makeEntry(6, 5) });
-	err = s->LastIndex(last);
-	BOOST_REQUIRE_EQUAL(err, OK);
-	BOOST_REQUIRE_EQUAL(last, 6);
+	last = s->LastIndex();
+	BOOST_REQUIRE_EQUAL(last.err, OK);
+	BOOST_REQUIRE_EQUAL(last.value, 6);
 }
 
 BOOST_AUTO_TEST_CASE(TestStorageFirstIndex) {
 	vector<Entry> ents = { makeEntry(3, 3), makeEntry(4, 4), makeEntry(5, 5) };
 	auto s = std::make_shared<MemoryStorage>(ents);
 
-	uint64_t first;
-	auto err = s->FirstIndex(first);
-	BOOST_REQUIRE_EQUAL(err, OK);
-	BOOST_REQUIRE_EQUAL(first, 4);
+	auto first = s->FirstIndex();
+	BOOST_REQUIRE_EQUAL(first.err, OK);
+	BOOST_REQUIRE_EQUAL(first.value, 4);
 
 	s->Compact(4);
-	err = s->FirstIndex(first);
-	BOOST_REQUIRE_EQUAL(err, OK);
-	BOOST_REQUIRE_EQUAL(first, 5);
+	first = s->FirstIndex();
+	BOOST_REQUIRE_EQUAL(first.err, OK);
+	BOOST_REQUIRE_EQUAL(first.value, 5);
 }
 
 BOOST_AUTO_TEST_CASE(TestStorageCompact) {

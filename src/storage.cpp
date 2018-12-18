@@ -1,4 +1,5 @@
 ﻿#include <raft/Storage.hpp>
+#include "utils.hpp"
 
 namespace raft {
 	MemoryStorage::MemoryStorage(const vector<Entry> &ents) : entries(ents) {
@@ -13,7 +14,7 @@ namespace raft {
 		return OK;
 	}
 
-	ErrorCode MemoryStorage::Entries(uint64_t lo, uint64_t hi, uint64_t max_size, vector<Entry> &out) {
+	Result<IEntrySlicePtr> MemoryStorage::Entries(uint64_t lo, uint64_t hi, uint64_t max_size) {
 		uint64_t offset = entries[0].index();
 		if (lo <= offset) {
 			return ErrCompacted;
@@ -23,44 +24,31 @@ namespace raft {
 		if (entries.size() == 1) { // 仅包含dumy entry
 			return ErrUnavailable;
 		}
-		size_t i = lo - offset, end = hi - offset;
-		size_t byteCount = entries[i].ByteSize();
-		out.push_back(entries[i]);
-		for (i++; i < end; i++) {
-			byteCount += entries[i].ByteSize();
-			if (byteCount > max_size) {
-				break;
-			}
-			out.push_back(entries[i]);
-		}
-		return OK;
+		auto ents = std::make_unique<EntrySlice<EntryVec>>(entries, lo - offset, hi - offset);
+		limitSize(*ents, max_size);
+		return { std::move(ents) };
 	}
 
-	ErrorCode MemoryStorage::Term(uint64_t i, uint64_t &t) {
-		t = 0;
+	Result<uint64_t> MemoryStorage::Term(uint64_t i) {
 		uint64_t offset = entries[0].index();
 		if (i < offset) {
-			return ErrCompacted;
+			return { 0, ErrCompacted };
 		} else if (i - offset >= entries.size()) {
-			return ErrUnavailable;
+			return { 0, ErrUnavailable };
 		}
-		t = entries[i - offset].term();
-		return OK;
+		return { entries[i - offset].term() };
 	}
 
-	ErrorCode MemoryStorage::LastIndex(uint64_t &i) {
-		i = lastIndex();
-		return OK;
+	Result<uint64_t> MemoryStorage::LastIndex() {
+		return { lastIndex() };
 	}
 
-	ErrorCode MemoryStorage::FirstIndex(uint64_t &i) {
-		i = firstIndex();
-		return OK;
+	Result<uint64_t> MemoryStorage::FirstIndex() {
+		return { firstIndex() };
 	}
 
-	ErrorCode MemoryStorage::Snapshot(raftpb::Snapshot **sn) {
-		*sn = &snapshot;
-		return OK;
+	Result<raftpb::Snapshot*> MemoryStorage::Snapshot() {
+		return { &snapshot };
 	}
 
 	uint64_t MemoryStorage::firstIndex() {

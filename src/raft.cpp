@@ -25,7 +25,7 @@ namespace raft {
 		return std::move(msg);
 	}
 
-	int numOfPendingConf(const vector<Entry> &ents) {
+	int numOfPendingConf(const EntryRange &ents) {
 		int n = 0;
 		for (auto &ent : ents) {
 			if (ent.type() == EntryConfChange) {
@@ -445,9 +445,7 @@ namespace raft {
 		case MsgReadIndex:
 		{
 			if (r->quorum() > 1) {
-				uint64_t t;
-				auto err = r->raftLog->term(r->raftLog->committed, t);
-				if (r->raftLog->zeroTermOnErrCompacted(t, err) != r->Term) {
+				if (r->raftLog->zeroTermOnErrCompacted(r->raftLog->term(r->raftLog->committed)) != r->Term) {
 					// Reject read only request when this leader has not committed any log entry at its term.
 					return OK;
 				}
@@ -747,12 +745,11 @@ namespace raft {
 		case MsgHup:
 		{
 			if (state != StateLeader) {
-				vector<Entry> ents;
-				auto err = raftLog->slice(ents, raftLog->applied + 1, raftLog->committed + 1, noLimit);
-				if (!SUCCESS(err)) {
-					fLog(logger, "unexpected error getting unapplied entries (%1%)", err);
+				auto ents = raftLog->slice(raftLog->applied + 1, raftLog->committed + 1, noLimit);
+				if (!ents.Ok()) {
+					fLog(logger, "unexpected error getting unapplied entries (%1%)", ents.err);
 				}
-				int n = numOfPendingConf(ents);
+				int n = numOfPendingConf(ents.value);
 				if (n != 0 && raftLog->committed > raftLog->applied) {
 					wLog(logger, "%1% cannot campaign at term %2% since there are still %3% pending configuration changes to apply", id, Term, n);
 					return OK;
@@ -813,7 +810,7 @@ namespace raft {
 		default:
 		{
 			auto err = step(this, m);
-			if (!SUCCESS(err)) {
+			if (err != OK) {
 				return err;
 			}
 			break;
@@ -1109,10 +1106,9 @@ namespace raft {
 			msg->set_index(mlastIndex);
 			send(std::move(msg));
 		} else {
-			uint64_t t;
-			auto err = raftLog->term(m.index(), t);
+			auto t = raftLog->term(m.index());
 			dLog(logger, "%1% [logterm: %2%, index: %3%] rejected msgApp [logterm: %4%, index: %5%] from %6%",
-				id, raftLog->zeroTermOnErrCompacted(t, err), m.index(), m.logterm(), m.index(), m.from());
+				id, raftLog->zeroTermOnErrCompacted(t), m.index(), m.logterm(), m.index(), m.from());
 			MessagePtr msg = make_message(m.from(), MsgAppResp, 0, true);
 			msg->set_index(m.index());
 			msg->set_rejecthint(raftLog->lastIndex());
@@ -1287,35 +1283,32 @@ namespace raft {
 		}
 		auto m = make_message(to);
 
-		uint64_t term;
-		std::vector<Entry> ents;
-		auto errt = raftLog->term(pr->Next - 1, term);
-		auto erre = raftLog->entries(ents, pr->Next, maxMsgSize);
-		if (ents.empty() && !sendIfEmpty) {
+		auto rterm = raftLog->term(pr->Next - 1);
+		auto rents = raftLog->entries(pr->Next, maxMsgSize);
+		if (rents.value.empty() && !sendIfEmpty) {
 			return false;
 		}
 
-		if (errt != OK || erre != OK) { // send snapshot if we failed to get term or entries
+		if (!rterm.Ok() || !rents.Ok()) { // send snapshot if we failed to get term or entries
 			if (!pr->RecentActive) {
 				dLog(logger, "ignore sending snapshot to %1% since it is not recently active", to);
 				return false;
 			}
 
 			m->set_type(MsgSnap);
-			Snapshot *sn;
-			auto err = raftLog->snapshot(&sn);
-			if (err != OK) {
-				if (err == ErrSnapshotTemporarilyUnavailable) {
+			auto rsn = raftLog->snapshot();
+			if (!rsn.Ok()) {
+				if (rsn.err == ErrSnapshotTemporarilyUnavailable) {
 					dLog(logger, "%1% failed to send snapshot to %2% because snapshot is temporarily unavailable", id, to);
 					return false;
 				}
 				abort(); // TODO(bdarnell)
 			}
-			if (IsEmptySnap(*sn)) {
+			if (IsEmptySnap(*rsn.value)) {
 				fLog(logger, "need non-empty snapshot");
 			}
-			*m->mutable_snapshot() = *sn;
-			uint64_t sindex = sn->metadata().index(), sterm = sn->metadata().term();
+			*m->mutable_snapshot() = *rsn.value;
+			uint64_t sindex = rsn.value->metadata().index(), sterm = rsn.value->metadata().term();
 			dLog(logger, "%1% [firstindex: %2%, commit: %3%] sent snapshot[index: %4%, term: %5%] to %6% [%7%]",
 				id, raftLog->firstIndex(), raftLog->committed, sindex, sterm, to, pr->to_string());
 			pr->becomeSnapshot(sindex);
@@ -1323,8 +1316,9 @@ namespace raft {
 		} else {
 			m->set_type(MsgApp);
 			m->set_index(pr->Next - 1);
-			m->set_logterm(term);
+			m->set_logterm(rterm.value);
 			auto ents_ = m->mutable_entries();
+			auto &ents = rents.value;
 			for (auto &ent : ents) *ents_->Add() = ent;
 			m->set_commit(raftLog->committed);
 			if (!ents.empty()) {
