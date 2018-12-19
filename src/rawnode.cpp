@@ -54,10 +54,6 @@ namespace raft {
 		raft = std::move(r);
 	}
 
-	raft::Ready RawNode::newReady() {
-		return raft::Ready(this->raft.get(), prevSoftSt, prevHardSt);
-	}
-
 	void RawNode::commitReady(raft::Ready &rd) {
 		if (rd.SoftState) {
 			prevSoftSt = *rd.SoftState;
@@ -173,9 +169,8 @@ namespace raft {
 
 	// Ready returns the current point-in-time state of this RawNode.
 	raft::Ready RawNode::Ready() {
-		auto rd = newReady();
-		raft->msgs.clear();
-		raft->reduceUncommittedSize(make_slice(rd.CommittedEntries));
+		raft::Ready rd(this->raft.get(), prevSoftSt, prevHardSt);
+		raft->reduceUncommittedSize(rd.CommittedEntries);
 		return std::move(rd);
 	}
 

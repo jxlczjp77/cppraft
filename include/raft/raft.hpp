@@ -298,8 +298,7 @@ namespace raft {
 		vector<uint64_t> nodes();
 		vector<uint64_t> learnerNodes();
 		template<class EntryContainer> void reduceUncommittedSize(EntryContainer &ents) {
-			auto s = make_slice(ents);
-			reduceUncommittedSize((const IEntrySlice &)s);
+			reduceUncommittedSize((const IEntrySlice &)make_slice(ents));
 		}
 		void reduceUncommittedSize(Entry &ent) {
 			std::array<Entry, 1> s = { std::move(ent) };

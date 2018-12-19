@@ -236,7 +236,7 @@ namespace raft {
 		// could be expensive.
 		pendingConfIndex = raftLog->lastIndex();
 
-		Entry emptyEnt;
+		std::array<Entry, 1> emptyEnt = { Entry() };
 		if (!appendEntry(emptyEnt)) {
 			// This won't happen because we just called reset() above.
 			fLog(logger, "empty entry was dropped");

@@ -36,7 +36,12 @@ namespace raft {
 				fLog(logger, "entry %1% conflict with committed entry [committed(%2%)]", ci, this->committed);
 			} else {
 				uint64_t offset = index + 1;
-				append(make_slice(ents, ci - offset));
+				uint64_t start = ci - offset;
+				if (start == 0) {
+					append(ents);
+				} else {
+					append(make_slice(ents, start));
+				}
 			}
 			commitTo(min(committed, lastnewi));
 			return true;

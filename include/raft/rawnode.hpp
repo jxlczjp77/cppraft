@@ -14,7 +14,6 @@ namespace raft {
 		HardState prevHardSt;
 
 		void Init(Config &&config, const vector<Peer> &peers);
-		raft::Ready newReady();
 		void commitReady(raft::Ready &rd);
 		void Tick();
 		void TickQuiesced();

@@ -95,15 +95,6 @@ namespace raft {
 		virtual void truncate(size_t new_count) { if (new_count < count) count = new_count; }
 	};
 
-	template<class Container>
-	EntrySlice<Container> make_slice(Container &c, size_t start_ = 0, size_t count_ = 0) {
-		return EntrySlice<Container>(c, start_, count_);
-	}
-	template<class Container>
-	EntrySlice<Container> make_slice(EntrySlice<Container> &c, size_t start_ = 0, size_t count_ = 0) {
-		return EntrySlice<Container>(*c.container, start_ + c.start, count_);
-	}
-
 	typedef std::unique_ptr<IEntrySlice> IEntrySlicePtr;
 	class EntryRange : public IEntrySlice {
 	public:
@@ -123,4 +114,34 @@ namespace raft {
 		virtual const_iterator end() const;
 		virtual void truncate(size_t new_count);
 	};
+
+	namespace detail {
+		template<class T>
+		T make_slice_impl(const T &c, size_t start_, size_t count_, const std::true_type&) {
+			return T(*c.container, start_ + c.start, count_);
+		}
+
+		template<class T>
+		EntrySlice<T> make_slice_impl(const T &c, size_t start_, size_t count_, const std::false_type&) {
+			return EntrySlice<T>(c, start_, count_);
+		}
+	}
+
+	template<class T>
+	typename std::conditional<std::is_base_of<IEntrySlice, T>::value, T, EntrySlice<T>>::type
+		make_slice(const T &c, size_t start_ = 0, size_t count_ = 0) {
+		return detail::make_slice_impl(c, start_, count_, std::is_base_of<IEntrySlice, T>::type());
+	}
+	inline const IEntrySlice &make_slice(const IEntrySlice &c) {
+		return c;
+	}
+	inline EntrySlice<IEntrySlice> make_slice(const IEntrySlice &c, size_t start_, size_t count_ = 0) {
+		return EntrySlice<IEntrySlice>(c, start_, count_);
+	}
+	inline const EntryRange &make_slice(const EntryRange &c) {
+		return c;
+	}
+	inline EntrySlice<EntryRange> make_slice(const EntryRange &c, size_t start_, size_t count_ = 0) {
+		return std::move(EntrySlice<EntryRange>(c, start_, count_));
+	}
 }
