@@ -3,7 +3,6 @@
 using namespace raft;
 using namespace raftpb;
 
-
 // TestMsgAppFlowControlFull ensures:
 // 1. msgApp can fill the sending window until full
 // 2. when the window is full, no more msgApp can be sent.

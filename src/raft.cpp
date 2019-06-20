@@ -6,11 +6,6 @@
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
 
-#include "raft_log.hpp"
-#include "progress.hpp"
-#include "read_only.hpp"
-#include "utils.hpp"
-
 namespace raft {
 	CampaignType campaignPreElection = "CampaignPreElection";
 	CampaignType campaignElection = "CampaignElection";
@@ -22,7 +17,7 @@ namespace raft {
 		msg->set_type(type);
 		msg->set_term(term);
 		msg->set_reject(reject);
-		return std::move(msg);
+		return msg;
 	}
 
 	int numOfPendingConf(const EntryRange &ents) {
@@ -180,7 +175,7 @@ namespace raft {
 		step = stepFollower;
 		reset(term);
 		tick = [&]() { tickElection(); };
-		lead = lead;
+		this->lead = lead;
 		state = StateFollower;
 		iLog(logger, "%1% became follower at term %2%", id, Term);
 	}
@@ -1056,7 +1051,7 @@ namespace raft {
 		// Preserving matchBuf across calls is an optimization
 		// used to avoid allocating a new slice on each call.
 		if (matchBuf.capacity() < prs.size()) {
-			matchBuf.resize(prs.size());
+			matchBuf.reserve(prs.size());
 		}
 		matchBuf.resize(prs.size());
 		int idx = 0;
@@ -1390,7 +1385,7 @@ namespace raft {
 			nodes.push_back(it->first);
 		}
 		std::sort(nodes.begin(), nodes.end());
-		return std::move(nodes);
+		return nodes;
 	}
 
 	vector<uint64_t> Raft::learnerNodes() {
@@ -1400,7 +1395,7 @@ namespace raft {
 			nodes.push_back(it->first);
 		}
 		std::sort(nodes.begin(), nodes.end());
-		return std::move(nodes);
+		return nodes;
 	}
 
 	void Raft::addNode(uint64_t id) {
@@ -1474,7 +1469,7 @@ namespace raft {
 		hs.set_term(Term);
 		hs.set_vote(Vote);
 		hs.set_commit(raftLog->committed);
-		return std::move(hs);
+		return hs;
 	}
 
 } // namespace raft

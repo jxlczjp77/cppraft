@@ -1,6 +1,6 @@
 ﻿#pragma once
-#include <raft/raft.hpp>
 #include <raft/logger.hpp>
+#include <raft/utils.hpp>
 
 namespace raft {
 	class Logger;

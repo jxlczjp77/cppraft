@@ -9,7 +9,7 @@ Snapshot makeSnapshot(const string &data, uint64_t index, uint64_t term, const C
 	sh.mutable_metadata()->set_index(index);
 	sh.mutable_metadata()->set_term(term);
 	*sh.mutable_metadata()->mutable_conf_state() = cs;
-	return std::move(sh);
+	return sh;
 };
 
 BOOST_AUTO_TEST_CASE(TestStorageTerm) {

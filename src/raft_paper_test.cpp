@@ -2,7 +2,7 @@
 #include "test_common.hpp"
 using namespace raft;
 using namespace raftpb;
-// #define DISABLE_PAPER_TEST
+#define DISABLE_PAPER_TEST
 
 class DiscardLogger : public Logger {
 public:

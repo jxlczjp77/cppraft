@@ -6,6 +6,10 @@
 #include <raft/logger.hpp>
 #include <raft/raft.pb.h>
 #include <raft/entrys.hpp>
+#include <raft/raft_log.hpp>
+#include <raft/progress.hpp>
+#include <raft/utils.hpp>
+#include <raft/status.hpp>
 #include <map>
 #include <memory>
 
@@ -17,36 +21,9 @@ namespace raft {
 	class Logger;
 
 	// None is a placeholder node ID used when there is no leader.
-	const uint64_t None = 0;
-	const uint64_t noLimit = std::numeric_limits<uint64_t>().max();
 	typedef std::unique_ptr<Message> MessagePtr;
 	typedef std::unique_ptr<Progress> ProgressPtr;
 	typedef std::shared_ptr<Storage> StoragePtr;
-
-	enum ErrorCode {
-		OK = 0,
-		ErrCompacted,
-		ErrSnapOutOfDate,
-		ErrUnavailable,
-		ErrSnapshotTemporarilyUnavailable,
-		ErrSeriaFail,
-		ErrAppendOutOfData,
-		ErrProposalDropped,
-		ErrStepLocalMsg,
-		ErrStepPeerNotFound,
-		ErrFalse
-	};
-
-	const char *error_string(ErrorCode c);
-
-	template<class Value> struct Result {
-		ErrorCode err;
-		Value value;
-
-		Result(Value &&v = Value(), ErrorCode e = OK) : value(std::move(v)), err(e) {}
-		Result(ErrorCode e) : err(e) {}
-		bool Ok() const { return err == OK; }
-	};
 
 	// Config contains the parameters to start a raft.
 	struct Config {
@@ -148,14 +125,6 @@ namespace raft {
 		string validate();
 	};
 
-	enum StateType {
-		StateFollower,
-		StateCandidate,
-		StateLeader,
-		StatePreCandidate,
-		numStates,
-	};
-
 	typedef string CampaignType;
 	// campaignPreElection represents the first phase of a normal election when
 	// Config.PreVote is true.
@@ -171,21 +140,6 @@ namespace raft {
 	ErrorCode stepCandidate(Raft *r, Message &m);
 	ErrorCode stepLeader(Raft *r, Message &m);
 	typedef std::function<ErrorCode(Raft *, Message &)> stepFunc;
-
-	// SoftState provides state that is useful for logging and debugging.
-	// The state is volatile and does not need to be persisted to the WAL.
-	struct SoftState {
-		uint64_t Lead; // must use atomic operations to access; keep 64-bit aligned.
-		StateType RaftState;
-		SoftState(uint64_t lead = 0, StateType state = StateFollower): Lead(lead), RaftState(state) {}
-
-		friend bool operator==(const SoftState &a, const SoftState &b) {
-			return a.Lead == b.Lead && a.RaftState == b.RaftState;
-		}
-		friend bool operator!=(const SoftState &a, const SoftState &b) {
-			return !(a == b);
-		}
-	};
 
 	class Raft : public boost::noncopyable {
 	public:

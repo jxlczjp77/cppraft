@@ -1,9 +1,5 @@
 ﻿#pragma once
-
-#include <log_unstable.hpp>
-#include <raft_log.hpp>
-#include <raft/Raft.hpp>
-#include <progress.hpp>
+#include <raft/raft.hpp>
 
 using namespace raft;
 using namespace std;

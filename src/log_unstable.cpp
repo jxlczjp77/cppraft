@@ -1,5 +1,4 @@
-﻿#include "log_unstable.hpp"
-#include <raft/Raft.hpp>
+﻿#include <raft/log_unstable.hpp>
 #define DEFAULT_ENTRY_LEN 100
 
 namespace raft {

@@ -30,7 +30,7 @@ unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries,
 	u.entries.insert(u.entries.begin(), entries.begin(), entries.end());
 	u.offset = offset;
 	u.logger = &logger;
-	return std::move(u);
+	return u;
 }
 
 MessagePtr make_message(
@@ -57,7 +57,7 @@ MessagePtr make_message(
 	msg->set_rejecthint(wrejectHint);
 	auto dd = msg->mutable_entries();
 	for (auto &ent : ents) *dd->Add() = ent;
-	return std::move(msg);
+	return msg;
 }
 
 string ltoa(raft_log *l) {

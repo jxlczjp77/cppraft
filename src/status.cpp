@@ -1,6 +1,5 @@
-﻿#include "status.hpp"
-#include "raft_log.hpp"
-#include "progress.hpp"
+﻿#include <raft/status.hpp>
+#include <raft/raft.hpp>
 #include <boost/format.hpp>
 
 namespace raft {
@@ -26,7 +25,7 @@ namespace raft {
 			}
 		}
 
-		return std::move(s);
+		return s;
 	}
 
 	// MarshalJSON translates the raft status into JSON.
@@ -50,7 +49,7 @@ namespace raft {
 		}
 
 		j += (boost::format("\"leadtransferee\":\"%x\"}") % LeadTransferee).str();
-		return std::move(j);
+		return j;
 	}
 	string Status::ToString() { return ToJson(); }
 }

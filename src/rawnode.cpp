@@ -1,7 +1,4 @@
 ﻿#include <raft/rawnode.hpp>
-#include "raft_log.hpp"
-#include "progress.hpp"
-#include "utils.hpp"
 #include <boost/throw_exception.hpp>
 
 namespace raft {
@@ -151,7 +148,7 @@ namespace raft {
 		}
 		for (auto n : raft->nodes()) cs.mutable_nodes()->Add(n);
 		for (auto n : raft->learnerNodes()) cs.mutable_learners()->Add(n);
-		return std::move(cs);
+		return cs;
 	}
 
 	// Step advances the state machine using the given message.
@@ -171,7 +168,7 @@ namespace raft {
 	raft::Ready RawNode::Ready() {
 		raft::Ready rd(this->raft.get(), prevSoftSt, prevHardSt);
 		raft->reduceUncommittedSize(rd.CommittedEntries);
-		return std::move(rd);
+		return rd;
 	}
 
 	// HasReady called when RawNode user need to check if any Ready pending.

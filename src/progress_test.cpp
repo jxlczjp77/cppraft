@@ -1,14 +1,12 @@
 ﻿#include <boost/test/unit_test.hpp>
 #include "test_common.hpp"
-#include <utils.hpp>
-#include <progress.hpp>
 
 inflights make_inflights(int start, int count, int size, vector<uint64_t> &&buf) {
 	inflights wantIn(size);
 	wantIn.start = start;
 	wantIn.count = count;
 	wantIn.buffer = std::move(buf);
-	return std::move(wantIn);
+	return wantIn;
 }
 
 void equal_inflights(const inflights &left, const inflights &right) {

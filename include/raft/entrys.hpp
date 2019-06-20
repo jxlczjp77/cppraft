@@ -142,6 +142,6 @@ namespace raft {
 		return c;
 	}
 	inline EntrySlice<EntryRange> make_slice(const EntryRange &c, size_t start_, size_t count_ = 0) {
-		return std::move(EntrySlice<EntryRange>(c, start_, count_));
+		return EntrySlice<EntryRange>(c, start_, count_);
 	}
 }

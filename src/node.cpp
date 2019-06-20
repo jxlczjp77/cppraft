@@ -1,6 +1,4 @@
 ﻿#include <raft/node.hpp>
-#include "raft_log.hpp"
-#include "utils.hpp"
 
 namespace raft {
 	// MustSync returns true if the hard state and count of Raft entries indicate
@@ -33,8 +31,31 @@ namespace raft {
 		if (!r->readStates.empty()) {
 			this->ReadStates = r->readStates;
 		}
-		this->MustSync = MustSync_(r->hardState(), prevHardSt, Entries.size());
+		this->MustSync = MustSync_(hardSt, prevHardSt, Entries.size());
 	}
+
+    Ready::Ready(Ready &&v)
+        : SoftState(std::move(v.SoftState))
+        , HardState(std::move(v.HardState))
+        , ReadStates(std::move(v.ReadStates))
+        , Entries(std::move(v.Entries))
+        , Snapshot(std::move(v.Snapshot))
+        , CommittedEntries(std::move(v.CommittedEntries))
+        , Messages(std::move(v.Messages))
+        , MustSync(v.MustSync) {
+    }
+
+    Ready &Ready::operator= (const Ready &v) {
+        SoftState = std::move(const_cast<raft::Ready&>(v).SoftState);
+        HardState = std::move(const_cast<raft::Ready&>(v).HardState);
+        ReadStates = std::move(const_cast<raft::Ready&>(v).ReadStates);
+        Entries = std::move(const_cast<raft::Ready&>(v).Entries);
+        Snapshot = std::move(const_cast<raft::Ready&>(v).Snapshot);
+        CommittedEntries = std::move(const_cast<raft::Ready&>(v).CommittedEntries);
+        Messages = std::move(const_cast<raft::Ready&>(v).Messages);
+        MustSync = v.MustSync;
+        return *this;
+    }
 
 	bool Ready::containsUpdates() {
 		return !IsEmptyHardState(this->HardState) ||

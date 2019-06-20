@@ -1,7 +1,5 @@
-﻿#include "raft_log.hpp"
-#include "utils.hpp"
+﻿#include <raft/raft_log.hpp>
 #include <boost/format.hpp>
-#include <raft/entrys.hpp>
 
 namespace raft {
 	raft_log::raft_log(StoragePtr storage_, Logger *logger_, uint64_t maxNextEntsSize_) {

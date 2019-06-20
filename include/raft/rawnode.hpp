@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include <raft/node.hpp>
-#include <raft/status.hpp>
 
 namespace raft {
 	using namespace raftpb;

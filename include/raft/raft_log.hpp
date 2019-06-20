@@ -1,7 +1,6 @@
 ﻿#pragma once
-#include <raft/Storage.hpp>
-#include <raft/Raft.hpp>
-#include "log_unstable.hpp"
+#include <raft/storage.hpp>
+#include <raft/log_unstable.hpp>
 #include <raft/entrys.hpp>
 
 namespace raft {

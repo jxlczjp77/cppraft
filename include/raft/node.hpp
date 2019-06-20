@@ -63,6 +63,10 @@ struct Ready
 	bool MustSync;
 
 	Ready(Raft *r, const raft::SoftState &prevSoftSt, const raft::HardState &prevHardSt);
+    Ready(Ready &&v);
+
+    Ready &operator= (const Ready &v);
+
 	bool containsUpdates();
 	uint64_t appliedCursor();
 };

@@ -55,18 +55,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\raft_log.hpp">
-      <Filter>源文件</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\log_unstable.hpp">
-      <Filter>源文件</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\utils.hpp">
-      <Filter>源文件</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\progress.hpp">
-      <Filter>源文件</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\raft\read_only.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -89,6 +77,18 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="..\include\raft\entrys.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\raft\log_unstable.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\raft\progress.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\raft\raft_log.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\raft\utils.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

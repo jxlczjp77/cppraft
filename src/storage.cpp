@@ -1,5 +1,5 @@
-﻿#include <raft/Storage.hpp>
-#include "utils.hpp"
+﻿#include <raft/storage.hpp>
+#include <raft/logger.hpp>
 
 namespace raft {
 	MemoryStorage::MemoryStorage(const vector<Entry> &ents) : entries(ents) {

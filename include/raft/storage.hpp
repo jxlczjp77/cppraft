@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include <raft/raft.pb.h>
-#include <raft/Raft.hpp>
 #include <raft/entrys.hpp>
+#include <raft/utils.hpp>
 
 namespace raft {
 	using namespace raftpb;
