@@ -47,7 +47,7 @@ function TestStorageTerm()
         end)
         s:close()
         s:delete_db()
-        assert(ok, not tt.wpanic)
+        assert(ok == not tt.wpanic, err)
     end
 end
 

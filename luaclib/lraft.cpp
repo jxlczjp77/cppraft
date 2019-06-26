@@ -71,9 +71,13 @@ static int lrawnode_init(lua_State *L) {
 
 static int lrawnode_ready(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
-    auto ready = node->Ready();
     auto r = lua_newuserdata(L, sizeof(Ready));
-    new (r) Ready(std::move(ready));
+    try {
+        auto ready = node->Ready();
+        new (r) Ready(std::move(ready));
+    } catch (const std::exception &e) {
+        luaL_error(L, e.what());
+    }
     luaL_getmetatable(L, MT_READY);
     lua_setmetatable(L, -2);
     return 1;
@@ -88,40 +92,70 @@ static int lrawnode_has_ready(lua_State *L) {
 static int lrawnode_step(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     auto msg = (Message *)luaL_checkudata(L, 2, MT_MESSAGE);
-    lua_pushinteger(L, node->Step(*msg));
+    raft::ErrorCode err;
+    try {
+        err = node->Step(*msg);
+    } catch (const std::exception &e) {
+        luaL_error(L, e.what());
+    }
+    lua_pushinteger(L, err);
     return 1;
 }
 
 static int lrawnode_advance(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
-    auto rd = (Ready *)luaL_checkudata(L, 2, MT_READY);
-    node->Advance(*rd);
+    try {
+        auto rd = (Ready *)luaL_checkudata(L, 2, MT_READY);
+        node->Advance(*rd);
+    } catch (const std::exception &e) {
+        luaL_error(L, e.what());
+    }
     return 0;
 }
 
 static int lrawnode_campaign(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
-    node->Campaign();
+    try {
+        node->Campaign();
+    } catch (const std::exception &e) {
+        luaL_error(L, e.what());
+    }
     return 0;
 }
 
 static int lrawnode_propose(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
-    lua_pushinteger(L, node->Propose(luaL_checkstring(L, 2)));
+    raft::ErrorCode err;
+    try {
+        err = node->Propose(luaL_checkstring(L, 2));
+    } catch (const std::exception &e) {
+        luaL_error(L, e.what());
+    }
+    lua_pushinteger(L, err);
     return 1;
 }
 
 static int lrawnode_propose_confchange(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     auto r = (ConfChange *)luaL_checkudata(L, 2, MT_CONFCHANGE);
-    lua_pushinteger(L, node->ProposeConfChange(*r));
+    raft::ErrorCode err;
+    try {
+        err = node->ProposeConfChange(*r);
+    } catch (const std::exception &e) {
+        luaL_error(L, e.what());
+    }
+    lua_pushinteger(L, err);
     return 1;
 }
 
 static int lrawnode_apply_confchange(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     auto r = (ConfChange *)luaL_checkudata(L, 2, MT_CONFCHANGE);
-    node->ApplyConfChange(*r);
+    try {
+        node->ApplyConfChange(*r);
+    } catch (const std::exception &e) {
+        luaL_error(L, e.what());
+    }
     return 0;
 }
 
@@ -129,7 +163,11 @@ static int lrawnode_readindex(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     size_t l = 0;
     auto p = luaL_checklstring(L, 2, &l);
-    node->ReadIndex(std::string(p, l));
+    try {
+        node->ReadIndex(std::string(p, l));
+    } catch (const std::exception &e) {
+        luaL_error(L, e.what());
+    }
     return 0;
 }
 

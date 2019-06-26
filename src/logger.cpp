@@ -70,12 +70,11 @@ namespace raft {
 	}
 
 	void DefaultLogger::log(const LogContext &ctx, const string &msg) {
-		if (ctx.GetLogLevel() < logLevel) {
-			return;
+		if (ctx.GetLogLevel() >= logLevel) {
+            std::cout
+                << "[" << ctx.GetLogLevel().ToString() << " " << ctx.ToString() << "] "
+                << msg << std::endl;
 		}
-		std::cout
-			<< "[" << ctx.GetLogLevel().ToString() << " " << ctx.ToString() << "] "
-			<< msg << std::endl;
 		if (ctx.GetLogLevel() == LogLevel::fatal) {
 			BOOST_THROW_EXCEPTION(std::runtime_error(ctx.ToString() + msg));
 		}

@@ -39,8 +39,9 @@ int lready_entries(lua_State *L, void *v) {
 
 int lready_committedEntries(lua_State *L, void *v) {
     Ready *r = (Ready *)v;
-    lua_pushlightuserdata(L, &r->CommittedEntries);
-    luaL_getmetatable(L, MT_SLICE);
+    auto slice = (IEntrySlicePtr *)lua_newuserdata(L, sizeof(IEntrySlicePtr));
+    new (slice) IEntrySlicePtr(new EntrySlice<IEntrySlice>(r->CommittedEntries));
+    luaL_getmetatable(L, MT_SLICE_PTR);
     lua_setmetatable(L, -2);
     return 1;
 }
