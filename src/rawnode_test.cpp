@@ -402,7 +402,7 @@ BOOST_AUTO_TEST_CASE(TestRawNodeCommitPaginationAfterRestart) {
 	s->entries.push_back(makeEntry(11, 1, "boom", EntryNormal));
 
 	RawNode rawNode;
-	rawNode.Init(newTestConfig(1, {}, 10, 1, s), { {1} });
+	rawNode.Init(std::move(cfg), { {1} });
 
 	for (uint64_t highestApplied = 0; highestApplied != 11;) {
 		auto rd = rawNode.Ready();

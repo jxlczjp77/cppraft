@@ -139,6 +139,12 @@ static int lrawnode_id(lua_State *L, void *v) {
     return 1;
 }
 
+static int lrawnode_uncommittedSize(lua_State *L, void *v) {
+    RawNode *node = (RawNode *)v;
+    lua_pushinteger(L, node->raft->uncommittedSize);
+    return 1;
+}
+
 static int lrawnode_read_states(lua_State *L, void *v) {
     RawNode *node = (RawNode *)v;
     lua_pushlightuserdata(L, &node->raft->readStates);
@@ -217,6 +223,8 @@ static int lconfig_delete(lua_State *L) {
     return 0;
 }
 
+//////////////////////////////////////////////////////////////////////////
+// memorystorage
 static int lmemorystorage(lua_State *L) {
     auto s = lua_newuserdata(L, sizeof(StoragePtr));
     new (s) StoragePtr(new MemoryStorage());
@@ -233,14 +241,55 @@ static int lmemorystorage_delete(lua_State *L) {
 
 static int lmemorystorage_append(lua_State *L) {
     StoragePtr *s = (StoragePtr *)luaL_checkudata(L, 1, MT_MEMORYSTORAGE);
-    auto slice = (IEntrySlice *)luaL_checkudata(L, 2, MT_SLICE);
-    ((MemoryStorage *)s->get())->Append(*slice);
+    if (lua_istable(L, 2)) {
+        std::vector<Entry> ents;
+        ents.reserve(luaL_len(L, 2));
+        lua_pushnil(L);
+        while (lua_next(L, 2) != 0) {
+            auto entry = (Entry *)luaL_checkudata(L, -1, MT_ENTRY);
+            ents.push_back(*entry);
+            lua_pop(L, 1);
+        }
+        ((MemoryStorage *)s->get())->Append(ents);
+    } else {
+        IEntrySlice *slice;
+        auto pp = (IEntrySlicePtr *)luaL_testudata(L, 2, MT_SLICE_PTR);
+        if (!pp) {
+            slice = (IEntrySlice *)luaL_checkudata(L, 2, MT_SLICE);
+        } else {
+            slice = pp->get();
+        }
+        ((MemoryStorage *)s->get())->Append(*slice);
+    }
     return 0;
+}
+
+static int lmemorystorage_apply_snapshot(lua_State *L) {
+    StoragePtr *s = (StoragePtr *)luaL_checkudata(L, 1, MT_MEMORYSTORAGE);
+    auto snapshot = (Snapshot *)luaL_checkudata(L, 2, MT_SNAPSHOT);
+    lua_pushinteger(L, ((MemoryStorage *)s->get())->ApplySnapshot(*snapshot));
+    return 1;
+}
+
+static int lmemorystorage_firstindex(lua_State *L) {
+    StoragePtr *s = (StoragePtr *)luaL_checkudata(L, 1, MT_MEMORYSTORAGE);
+    auto result = (*s)->FirstIndex();
+    lua_pushinteger(L, result.err);
+    lua_pushinteger(L, result.value);
+    return 2;
 }
 
 static int lmemorystorage_lastindex(lua_State *L) {
     StoragePtr *s = (StoragePtr *)luaL_checkudata(L, 1, MT_MEMORYSTORAGE);
     auto result = (*s)->LastIndex();
+    lua_pushinteger(L, result.err);
+    lua_pushinteger(L, result.value);
+    return 2;
+}
+
+static int lmemorystorage_term(lua_State *L) {
+    StoragePtr *s = (StoragePtr *)luaL_checkudata(L, 1, MT_LDBSTORAGE);
+    auto result = ((LDBStorage *)s->get())->Term(luaL_checkinteger(L, 2));
     lua_pushinteger(L, result.err);
     lua_pushinteger(L, result.value);
     return 2;
@@ -260,15 +309,39 @@ static int lmemorystorage_entries(lua_State *L) {
     return 2;
 }
 
+int lmemorystorage_set_hardstate_(lua_State *L) {
+    StoragePtr *s = (StoragePtr *)luaL_checkudata(L, 1, MT_MEMORYSTORAGE);
+    auto h = (HardState *)luaL_checkudata(L, 2, MT_HARDSTATE);
+    ((MemoryStorage *)s->get())->hard_state = *h;
+    return 0;
+}
+
+int lmemorystorage_set_hardstate(lua_State *L, void *v) {
+    StoragePtr *s = (StoragePtr *)v;
+    auto h = (HardState *)luaL_checkudata(L, 3, MT_HARDSTATE);
+    ((MemoryStorage *)s->get())->hard_state = *h;
+    return 0;
+}
+
+int lmemorystorage_hardstate(lua_State *L, void *v) {
+    StoragePtr *s = (StoragePtr *)v;
+    lua_pushlightuserdata(L, &((MemoryStorage *)s->get())->hard_state);
+    luaL_getmetatable(L, MT_HARDSTATE);
+    lua_setmetatable(L, -2);
+    return 1;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// ldb storage
 static int lldbstorage(lua_State *L) {
-    if (!lua_islightuserdata(L, 1)) {
-        luaL_error(L, "db expected");
+    if (!lua_istable(L, 1)) {
+        luaL_error(L, "ldb extends class expected");
     }
-    leveldb::DB *db = (leveldb::DB *)lua_touserdata(L, 1);
-    auto s = lua_newuserdata(L, sizeof(StoragePtr));
-    new (s) StoragePtr(new LDBStorage(db));
+    auto s = (StoragePtr *)lua_newuserdata(L, sizeof(StoragePtr));
+    new (s) StoragePtr(new LDBStorage(L));
     luaL_getmetatable(L, MT_LDBSTORAGE);
     lua_setmetatable(L, -2);
+    ((LDBStorage *)s->get())->init(1);
     return 1;
 }
 
@@ -305,6 +378,7 @@ static const luaL_Reg rawnode_m[] = {
 
 static const Xet_reg_pre rawnode_getsets[] = {
     {"id", lrawnode_id, nullptr, 0},
+    {"uncommitted_size", lrawnode_uncommittedSize, nullptr, 0},
     {"read_states", lrawnode_read_states, lrawnode_set_read_states, 0},
     {"step_func", nullptr, lrawnode_set_step, 0},
     {NULL}
@@ -373,9 +447,18 @@ static const Xet_reg_pre peer_getsets[] = {
 static const luaL_Reg memorystorage_m[] = {
     {"__gc", lmemorystorage_delete},
     {"append", lmemorystorage_append},
-    {"lastindex", lmemorystorage_lastindex},
-    {"entries", lmemorystorage_entries},
+    {"apply_snapshot", lmemorystorage_apply_snapshot},
+    {"LastIndex", lmemorystorage_lastindex},
+    {"FirstIndex", lmemorystorage_firstindex},
+    {"Term", lmemorystorage_term},
+    {"Entries", lmemorystorage_entries},
+    {"set_hardstate", lmemorystorage_set_hardstate_},
     {NULL, NULL}
+};
+
+static const Xet_reg_pre memorystorage_getsets[] = {
+    {"hardstate", lmemorystorage_hardstate, lmemorystorage_set_hardstate, 0},
+    {NULL}
 };
 
 static const luaL_Reg ldbstorage_m[] = {
@@ -396,8 +479,8 @@ int lslice_empty(lua_State *L) {
 }
 
 int lslice_at(lua_State *L) {
-    IEntrySlice *slice = (IEntrySlice *)luaL_checkudata(L, 1, MT_SLICE_PTR);
-    lua_pushlightuserdata(L, &slice->at(luaL_checkinteger(L, 2)));
+    IEntrySlice *slice = (IEntrySlice *)luaL_checkudata(L, 1, MT_SLICE);
+    lua_pushlightuserdata(L, &slice->at(luaL_checkinteger(L, 2) - 1));
     luaL_getmetatable(L, MT_ENTRY);
     lua_setmetatable(L, -2);
     return 1;
@@ -428,10 +511,16 @@ int lslice_ipairs(lua_State *L) {
 
 static const luaL_Reg slice_m[] = {
     {"size", lslice_size},
+    {"__len", lslice_size},
+    {"__array", lslice_at},
     {"empty", lslice_empty},
     {"at", lslice_at},
     {"ipairs", lslice_ipairs},
     {NULL, NULL}
+};
+
+static const Xet_reg_pre slice_getsets[] = {
+    {NULL}
 };
 
 int lslice_ptr_size(lua_State *L) {
@@ -448,7 +537,7 @@ int lslice_ptr_empty(lua_State *L) {
 
 int lslice_ptr_at(lua_State *L) {
     IEntrySlicePtr *slice = (IEntrySlicePtr *)luaL_checkudata(L, 1, MT_SLICE_PTR);
-    lua_pushlightuserdata(L, &(*slice)->at(luaL_checkinteger(L, 2)));
+    lua_pushlightuserdata(L, &(*slice)->at(luaL_checkinteger(L, 2) - 1));
     luaL_getmetatable(L, MT_ENTRY);
     lua_setmetatable(L, -2);
     return 1;
@@ -484,14 +573,49 @@ int lslice_ptr_delete(lua_State *L) {
 }
 
 static const luaL_Reg slice_ptr_m[] = {
+    {"__gc", lslice_ptr_delete},
+    {"__len", lslice_ptr_size},
+    {"__array", lslice_ptr_at},
     {"size", lslice_ptr_size},
     {"empty", lslice_ptr_empty},
     {"at", lslice_ptr_at},
     {"ipairs", lslice_ptr_ipairs},
-    {"__gc", lslice_ptr_delete},
     {NULL, NULL}
 };
 
+static const Xet_reg_pre slice_ptr_getsets[] = {
+    {NULL}
+};
+
+static int ldefault_log(lua_State *L) {
+    lua_pushlightuserdata(L, &DefaultLogger::instance());
+    luaL_getmetatable(L, MT_LOG);
+    lua_setmetatable(L, -2);
+    return 1;
+}
+
+static int llog_set_level(lua_State *L, void *v) {
+    Logger *l = (Logger *)v;
+    l->setLogLevel((raft::LogLevel)(int)luaL_checkinteger(L, 3));
+    return 0;
+}
+
+static int llog_level(lua_State *L, void *v) {
+    Logger *l = (Logger *)v;
+    lua_pushinteger(L, l->getLogLevel());
+    return 1;
+}
+
+static const luaL_Reg log_m[] = {
+    {NULL, NULL}
+};
+
+static const Xet_reg_pre log_getsets[] = {
+    {"level", llog_level, llog_set_level, 0},
+    {NULL}
+};
+
+void regist_uint64(lua_State *L);
 extern "C" LUA_API int luaopen_lraft(lua_State *L) {
     luaL_checkversion(L);
     luaL_Reg l[] = {
@@ -502,18 +626,21 @@ extern "C" LUA_API int luaopen_lraft(lua_State *L) {
         { "IsLocalMsg", lislocalmsg },
         { "IsEmptyHardState", lIsEmptyHardState },
         { "readstate", lreadstate },
+        { "default_logger", ldefault_log },
         { NULL, NULL },
     };
     luaL_newlib(L, l);
     init_metatable(L, MT_RAWNODE, rawnode_m, rawnode_getsets);
     init_metatable(L, MT_CONFIG, config_m, config_getsets);
     init_metatable(L, MT_PEER, peer_m, peer_getsets);
-    init_metatable(L, MT_MEMORYSTORAGE, memorystorage_m);
+    init_metatable(L, MT_MEMORYSTORAGE, memorystorage_m, memorystorage_getsets);
     init_metatable(L, MT_LDBSTORAGE, ldbstorage_m);
-    init_metatable(L, MT_SLICE, slice_m);
-    init_metatable(L, MT_SLICE_PTR, slice_ptr_m);
+    init_metatable(L, MT_SLICE, slice_m, slice_getsets);
+    init_metatable(L, MT_SLICE_PTR, slice_ptr_m, slice_ptr_getsets);
+    init_metatable(L, MT_LOG, log_m, log_getsets);
     regist_pb_class(L);
     regist_ready_class(L);
+    regist_uint64(L);
 
     REG_ENUM(L, StateFollower);
     REG_ENUM(L, StateCandidate);
@@ -531,6 +658,14 @@ extern "C" LUA_API int luaopen_lraft(lua_State *L) {
     REG_ENUM(L, ErrStepLocalMsg);
     REG_ENUM(L, ErrStepPeerNotFound);
     REG_ENUM(L, ErrFalse);
+
+    REG_ENUM1(L, LogLevel::all, "LOG_ALL");
+    REG_ENUM1(L, LogLevel::debug, "LOG_DEBUG");
+    REG_ENUM1(L, LogLevel::info, "LOG_INFO");
+    REG_ENUM1(L, LogLevel::warn, "LOG_WARN");
+    REG_ENUM1(L, LogLevel::error, "LOG_ERROR");
+    REG_ENUM1(L, LogLevel::fatal, "LOG_FATAL");
+    REG_ENUM1(L, LogLevel::off, "LOG_OFF");
 
     lua_pushinteger(L, noLimit);
     lua_setfield(L, -2, "noLimit");

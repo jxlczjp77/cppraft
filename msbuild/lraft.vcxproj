@@ -80,13 +80,13 @@
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\raft;$(ProjectDir)..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <PreprocessorDefinitions>LUA_CORE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>LUA_BUILD_AS_DLL;LUA_CORE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>raft.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>raft.lib;$(LUA_LIBDIR)/lua.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -94,6 +94,7 @@
     <ClCompile Include="..\luaclib\lstorage.cpp" />
     <ClCompile Include="..\luaclib\lraft.cpp" />
     <ClCompile Include="..\luaclib\lraft.pb.cpp" />
+    <ClCompile Include="..\luaclib\luint64.cpp" />
     <ClCompile Include="..\luaclib\lutils.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -101,6 +102,8 @@
     <ClInclude Include="..\luaclib\lutils.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\lualib\ldbstorage.lua" />
+    <None Include="..\test\ldbstorage_test.lua" />
     <None Include="..\test\test.lua" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

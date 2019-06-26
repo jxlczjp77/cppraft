@@ -16,6 +16,9 @@
     <Filter Include="test">
       <UniqueIdentifier>{b08f23cc-5102-43a0-9592-b74c2367b326}</UniqueIdentifier>
     </Filter>
+    <Filter Include="lualib">
+      <UniqueIdentifier>{687ced1d-897f-4555-bd7b-f22aa2e13a3c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\luaclib\lraft.cpp">
@@ -33,6 +36,9 @@
     <ClCompile Include="..\luaclib\lready.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="..\luaclib\luint64.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\luaclib\lutils.hpp">
@@ -45,6 +51,12 @@
   <ItemGroup>
     <None Include="..\test\test.lua">
       <Filter>test</Filter>
+    </None>
+    <None Include="..\test\ldbstorage_test.lua">
+      <Filter>test</Filter>
+    </None>
+    <None Include="..\lualib\ldbstorage.lua">
+      <Filter>lualib</Filter>
     </None>
   </ItemGroup>
 </Project>

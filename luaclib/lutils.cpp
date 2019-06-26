@@ -12,14 +12,19 @@ void Xet_add(lua_State *L, Xet_reg l) {
 
 int index_handler(lua_State *L) {
     // stack has userdata, index
+    if (lua_isnumber(L, 2)) {
+        if (luaL_getmetafield(L, 1, "__array") == LUA_TNIL) {
+            luaL_error(L, "cannot index '%s'", lua_tostring(L, 2));
+        }
+        lua_pushvalue(L, 1);
+        lua_pushvalue(L, 2);
+        lua_call(L, 2, 1);
+        return 1;
+    }
     lua_pushvalue(L, 2);                // dup index
     lua_rawget(L, lua_upvalueindex(1)); // lookup member by name
 
     if (!lua_islightuserdata(L, -1)) {
-        lua_pop(L, 1);                        // drop value
-        lua_pushvalue(L, 2);                  // dup index
-        lua_rawget(L, lua_upvalueindex(1)); // else try methods
-
         if (lua_isnil(L, -1))                 // invalid member
             luaL_error(L, "cannot get member '%s'", lua_tostring(L, 2));
 
@@ -47,7 +52,9 @@ int newindex_handler(lua_State *L) {
         luaL_error(L, "cannot set member '%s'", lua_tostring(L, 2));
 
     lua_pop(L, 1);
-    luaL_checktype(L, 1, LUA_TUSERDATA);
+    if (!lua_islightuserdata(L, 1)) {
+        luaL_checktype(L, 1, LUA_TUSERDATA);
+    }
     return m->set_func(L, (void*)((char*)lua_touserdata(L, 1) + m->offset));
 }
 

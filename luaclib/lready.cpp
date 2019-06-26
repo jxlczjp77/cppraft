@@ -30,8 +30,9 @@ int lready_hardstate(lua_State *L, void *v) {
 
 int lready_entries(lua_State *L, void *v) {
     Ready *r = (Ready *)v;
-    lua_pushlightuserdata(L, &r->Entries);
-    luaL_getmetatable(L, MT_SLICE);
+    auto slice = (IEntrySlicePtr *)lua_newuserdata(L, sizeof(IEntrySlicePtr));
+    new (slice) IEntrySlicePtr(new EntrySlice<IEntrySlice>(r->Entries));
+    luaL_getmetatable(L, MT_SLICE_PTR);
     lua_setmetatable(L, -2);
     return 1;
 }
@@ -128,6 +129,7 @@ static const luaL_Reg ready_m[] = {
 
 static const luaL_Reg readstate_vec_m[] = {
     {"size", lreadstate_vec_size},
+    {"__len", lreadstate_vec_size},
     {"empty", lreadstate_vec_empty},
     {"ipairs", lreadstate_vec_ipairs},
     {NULL, NULL}
@@ -165,6 +167,7 @@ int lmessages_vec_size(lua_State *L) {
 
 static const luaL_Reg messages_vec_m[] = {
     {"size", lmessages_vec_size},
+    {"__len", lmessages_vec_size},
     {"ipairs", lmessages_vec_ipairs},
     {NULL, NULL}
 };
@@ -177,7 +180,9 @@ int lreadstate_index(lua_State *L, void *v) {
 
 int lreadstate_set_index(lua_State *L, void *v) {
     auto state = (ReadState *)v;
-    state->Index = luaL_checkinteger(L, 3);
+    if (!lua_isnil(L, 3)) {
+        state->Index = luaL_checkinteger(L, 3);
+    }
     return 0;
 }
 
@@ -189,7 +194,9 @@ int lreadstate_request_ctx(lua_State *L, void *v) {
 
 int lreadstate_set_request_ctx(lua_State *L, void *v) {
     auto state = (ReadState *)v;
-    state->RequestCtx = luaL_checkstring(L, 3);
+    if (!lua_isnil(L, 3)) {
+        state->RequestCtx = luaL_checkstring(L, 3);
+    }
     return 0;
 }
 

@@ -6,7 +6,7 @@
 
 namespace raft {
     const uint64_t None = 0;
-    const uint64_t noLimit = std::numeric_limits<uint64_t>().max();
+    const uint64_t noLimit = std::numeric_limits<int64_t>().max();
 
     enum ErrorCode {
         OK = 0,

@@ -1,0 +1,17 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [{
+        "type": "lua",
+        "request": "launch",
+        "name": "Launch",
+        "runtimeArgs": "${workspaceFolder}/test.lua",
+        "cwd": "${workspaceFolder}",
+        "cpath": "${workspaceFolder}/out/bin/x64/Debug/?.dll",
+        "path": "${workspaceFolder}/lualib/?.lua",
+        "runtimeExecutable": "E:/work/c++/vcpkg/installed/x64-windows/tools/lua/lua.exe",
+        "stopOnEntry": false
+    }]
+}

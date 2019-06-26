@@ -1,30 +1,37 @@
 ﻿#include "lutils.hpp"
 #include <raft/raft.pb.h>
 #include <raft/entrys.hpp>
+#include <raft/utils.hpp>
 using namespace raftpb;
 
 static int lnew_entry(lua_State *L) {
-    void *p = lua_newuserdata(L, sizeof(Entry));
+    auto n = lua_gettop(L);
+    auto p = (Entry *)lua_newuserdata(L, sizeof(Entry));
     new (p) Entry();
     luaL_getmetatable(L, MT_ENTRY);
     lua_setmetatable(L, -2);
+    if (n >= 1 && !lua_isnil(L, 1)) p->set_index(luaL_checkinteger(L, 1));
+    if (n >= 2 && !lua_isnil(L, 2)) p->set_term(luaL_checkinteger(L, 2));
+    if (n >= 3 && !lua_isnil(L, 3)) {
+        size_t l = 0;
+        auto data = luaL_checklstring(L, 3, &l);
+        p->set_data(std::string(data, l));
+    }
+    if (n >= 4 && !lua_isnil(L, 4)) p->set_type((EntryType)luaL_checkinteger(L, 4));
     return 1;
 }
 
 static int lnew_message(lua_State *L) {
-    Message *m = nullptr;
-    if (lua_gettop(L) >= 1) {
-        m = (Message *)luaL_checkudata(L, 1, MT_MESSAGE);
-    }
-
+    Message *m = (lua_gettop(L) >= 1) ? (Message *)luaL_checkudata(L, 1, MT_MESSAGE) : nullptr;
     auto p = (Message *)lua_newuserdata(L, sizeof(Message));
+    luaL_getmetatable(L, MT_MESSAGE);
+    lua_setmetatable(L, -2);
+
     if (m) {
         new (p) Message(*m);
     } else {
         new (p) Message();
     }
-    luaL_getmetatable(L, MT_MESSAGE);
-    lua_setmetatable(L, -2);
     return 1;
 }
 
@@ -33,6 +40,18 @@ static int lnew_confchange(lua_State *L) {
     new (p) ConfChange();
     luaL_getmetatable(L, MT_CONFCHANGE);
     lua_setmetatable(L, -2);
+    return 1;
+}
+
+static int lnew_hardstate(lua_State *L) {
+    auto n = lua_gettop(L);
+    auto p = (HardState *)lua_newuserdata(L, sizeof(HardState));
+    new (p) HardState();
+    luaL_getmetatable(L, MT_HARDSTATE);
+    lua_setmetatable(L, -2);
+    if (n >= 1 && !lua_isnil(L, 1)) p->set_term(luaL_checkinteger(L, 1));
+    if (n >= 2 && !lua_isnil(L, 2)) p->set_commit(luaL_checkinteger(L, 2));
+    if (n >= 3 && !lua_isnil(L, 3)) p->set_vote(luaL_checkinteger(L, 3));
     return 1;
 }
 
@@ -48,52 +67,54 @@ static int lmessage_delete(lua_State *L) {
     return 0;
 }
 
-int lentry_set_index(lua_State *L) {
-    Entry *e = (Entry *)luaL_checkudata(L, 1, MT_ENTRY);
-    e->set_index(luaL_checkinteger(L, 2));
+int lentry_set_index(lua_State *L, void *v) {
+    Entry *e = (Entry *)v;
+    if (!lua_isnil(L, 3)) e->set_index(luaL_checkinteger(L, 3));
     return 0;
 }
 
-int lentry_index(lua_State *L) {
-    Entry *e = (Entry *)luaL_checkudata(L, 1, MT_ENTRY);
+int lentry_index(lua_State *L, void *v) {
+    Entry *e = (Entry *)v;
     lua_pushinteger(L, e->index());
     return 1;
 }
 
-int lentry_set_term(lua_State *L) {
-    Entry *e = (Entry *)luaL_checkudata(L, 1, MT_ENTRY);
-    e->set_term(luaL_checkinteger(L, 2));
+int lentry_set_term(lua_State *L, void *v) {
+    Entry *e = (Entry *)v;
+    if (!lua_isnil(L, 3)) e->set_term(luaL_checkinteger(L, 3));
     return 0;
 }
 
-int lentry_term(lua_State *L) {
-    Entry *e = (Entry *)luaL_checkudata(L, 1, MT_ENTRY);
+int lentry_term(lua_State *L, void *v) {
+    Entry *e = (Entry *)v;
     lua_pushinteger(L, e->term());
     return 1;
 }
 
-int lentry_set_type(lua_State *L) {
-    Entry *e = (Entry *)luaL_checkudata(L, 1, MT_ENTRY);
-    e->set_type((EntryType)luaL_checkinteger(L, 2));
+int lentry_set_type(lua_State *L, void *v) {
+    Entry *e = (Entry *)v;
+    if (!lua_isnil(L, 3)) e->set_type((EntryType)luaL_checkinteger(L, 3));
     return 0;
 }
 
-int lentry_type(lua_State *L) {
-    Entry *e = (Entry *)luaL_checkudata(L, 1, MT_ENTRY);
+int lentry_type(lua_State *L, void *v) {
+    Entry *e = (Entry *)v;
     lua_pushinteger(L, e->type());
     return 1;
 }
 
-int lentry_set_data(lua_State *L) {
-    Entry *e = (Entry *)luaL_checkudata(L, 1, MT_ENTRY);
-    size_t len = 0;
-    const char *p = luaL_checklstring(L, 2, &len);
-    e->set_data(p, len);
+int lentry_set_data(lua_State *L, void *v) {
+    Entry *e = (Entry *)v;
+    if (!lua_isnil(L, 3)) {
+        size_t len = 0;
+        const char *p = luaL_checklstring(L, 3, &len);
+        e->set_data(p, len);
+    }
     return 0;
 }
 
-int lentry_data(lua_State *L) {
-    Entry *e = (Entry *)luaL_checkudata(L, 1, MT_ENTRY);
+int lentry_data(lua_State *L, void *v) {
+    Entry *e = (Entry *)v;
     auto &data = e->data();
     lua_pushlstring(L, data.c_str(), data.length());
     return 1;
@@ -114,56 +135,130 @@ int lentry_serialize(lua_State *L) {
     return 1;
 }
 
+int lentry_byte_size(lua_State *L) {
+    Entry *e = (Entry *)luaL_checkudata(L, 1, MT_ENTRY);
+    lua_pushinteger(L, e->ByteSize());
+    return 1;
+}
+
+int lentry_payload_size(lua_State *L) {
+    Entry *e = (Entry *)luaL_checkudata(L, 1, MT_ENTRY);
+    lua_pushinteger(L, raft::PayloadSize(*e));
+    return 1;
+}
+
 static const luaL_Reg entry_m[] = {
     {"__gc", lentry_delete},
-    {"set_index", lentry_set_index},
-    {"index", lentry_index},
-    {"set_term", lentry_set_term},
-    {"term", lentry_term},
-    {"set_type", lentry_set_type},
-    {"type", lentry_type},
-    {"set_data", lentry_set_data},
-    {"data", lentry_data},
     {"serialize", lentry_serialize},
     {"parser", lentry_parser},
+    {"byte_size", lentry_byte_size},
+    {"payload_size", lentry_payload_size},
     {NULL, NULL}
 };
 
-int lsnapshot_data(lua_State *L) {
-    Snapshot *s = (Snapshot *)luaL_checkudata(L, 1, MT_SNAPSHOT);
+static const Xet_reg_pre entry_getsets[] = {
+    {"index", lentry_index, lentry_set_index, 0},
+    {"term", lentry_term, lentry_set_term, 0},
+    {"type", lentry_type, lentry_set_type, 0},
+    {"data", lentry_data, lentry_set_data, 0},
+    {NULL, NULL}
+};
+
+int lsnapshot_data(lua_State *L, void *v) {
+    Snapshot *s = (Snapshot *)v;
     auto &d = s->data();
     lua_pushlstring(L, d.c_str(), d.length());
     return 1;
 }
 
-int lsnapshot_metadata(lua_State *L) {
-    Snapshot *s = (Snapshot *)luaL_checkudata(L, 1, MT_SNAPSHOT);
+int lsnapshot_set_data(lua_State *L, void *v) {
+    Snapshot *s = (Snapshot *)v;
+    if (!lua_isnil(L, 3)) {
+        size_t l = 0;
+        auto p = luaL_checklstring(L, 3, &l);
+        s->set_data(p, l);
+    } else {
+        s->set_data("");
+    }
+    return 0;
+}
+
+int lsnapshot_metadata(lua_State *L, void *v) {
+    Snapshot *s = (Snapshot *)v;
     lua_pushlightuserdata(L, s->mutable_metadata());
     luaL_getmetatable(L, MT_SNAPSHOT_METADATA);
     lua_setmetatable(L, -2);
     return 1;
 }
 
+int lnew_snapshot(lua_State *L) {
+    void *p = lua_newuserdata(L, sizeof(Snapshot));
+    new (p) Snapshot();
+    luaL_getmetatable(L, MT_SNAPSHOT);
+    lua_setmetatable(L, -2);
+    return 1;
+}
+
+int lsnapshot_delete(lua_State *L) {
+    Snapshot *s = (Snapshot *)luaL_checkudata(L, 1, MT_SNAPSHOT);
+    s->~Snapshot();
+    return 0;
+}
+
+int lsnapshot_parser(lua_State *L) {
+    Snapshot *e = (Snapshot *)luaL_checkudata(L, 1, MT_SNAPSHOT);
+    size_t len = 0;
+    const char *p = luaL_checklstring(L, 2, &len);
+    lua_pushboolean(L, e->ParseFromArray(p, (int)len));
+    return 1;
+}
+
+int lsnapshot_serialize(lua_State *L) {
+    Snapshot *e = (Snapshot *)luaL_checkudata(L, 1, MT_SNAPSHOT);
+    auto d = e->SerializeAsString();
+    lua_pushlstring(L, d.c_str(), d.length());
+    return 1;
+}
+
 static const luaL_Reg snatshop_m[] = {
-    {"data", lsnapshot_data},
-    {"metadata", lsnapshot_metadata},
+    {"__gc", lsnapshot_delete},
+    {"serialize", lsnapshot_serialize},
+    {"parser", lsnapshot_parser},
     {NULL, NULL}
 };
 
-int lsnapshot_metadata_index(lua_State *L) {
-    SnapshotMetadata *s = (SnapshotMetadata *)luaL_checkudata(L, 1, MT_SNAPSHOT_METADATA);
+static const Xet_reg_pre snatshop_getsets[] = {
+    {"data",lsnapshot_data, lsnapshot_set_data, 0},
+    {"metadata",lsnapshot_metadata, nullptr, 0},
+    {NULL}
+};
+
+int lsnapshot_metadata_index(lua_State *L, void *v) {
+    SnapshotMetadata *s = (SnapshotMetadata *)v;
     lua_pushinteger(L, s->index());
     return 1;
 }
 
-int lsnapshot_metadata_term(lua_State *L) {
-    SnapshotMetadata *s = (SnapshotMetadata *)luaL_checkudata(L, 1, MT_SNAPSHOT_METADATA);
+int lsnapshot_metadata_set_index(lua_State *L, void *v) {
+    SnapshotMetadata *s = (SnapshotMetadata *)v;
+    s->set_index(luaL_checkinteger(L, 3));
+    return 1;
+}
+
+int lsnapshot_metadata_term(lua_State *L, void *v) {
+    SnapshotMetadata *s = (SnapshotMetadata *)v;
     lua_pushinteger(L, s->term());
     return 1;
 }
 
-int lsnapshot_metadata_conf_state(lua_State *L) {
-    SnapshotMetadata *s = (SnapshotMetadata *)luaL_checkudata(L, 1, MT_SNAPSHOT_METADATA);
+int lsnapshot_metadata_set_term(lua_State *L, void *v) {
+    SnapshotMetadata *s = (SnapshotMetadata *)v;
+    s->set_term(luaL_checkinteger(L, 3));
+    return 1;
+}
+
+int lsnapshot_metadata_conf_state(lua_State *L, void *v) {
+    SnapshotMetadata *s = (SnapshotMetadata *)v;
     lua_pushlightuserdata(L, s->mutable_conf_state());
     luaL_getmetatable(L, MT_CONFSTATE);
     lua_setmetatable(L, -2);
@@ -171,14 +266,18 @@ int lsnapshot_metadata_conf_state(lua_State *L) {
 }
 
 static const luaL_Reg snatshop_metadata_m[] = {
-    {"index", lsnapshot_metadata_index},
-    {"term", lsnapshot_metadata_term},
-    {"conf_state", lsnapshot_metadata_conf_state},
     {NULL, NULL}
 };
 
-int lconf_state_nodes(lua_State *L) {
-    ConfState *s = (ConfState *)luaL_checkudata(L, 1, MT_CONFSTATE);
+static const Xet_reg_pre snatshop_metadata_getsets[] = {
+    {"index",lsnapshot_metadata_index, lsnapshot_metadata_set_index, 0},
+    {"term",lsnapshot_metadata_term, lsnapshot_metadata_set_term, 0},
+    {"conf_state",lsnapshot_metadata_conf_state, nullptr, 0},
+    {NULL}
+};
+
+int lconf_state_nodes(lua_State *L, void *v) {
+    ConfState *s = (ConfState *)v;
     lua_createtable(L, s->nodes().size(), 0);
     size_t i = 1;
     for (auto id : s->nodes()) {
@@ -188,8 +287,26 @@ int lconf_state_nodes(lua_State *L) {
     return 1;
 }
 
-int lconf_state_learners(lua_State *L) {
-    ConfState *s = (ConfState *)luaL_checkudata(L, 1, MT_CONFSTATE);
+int lconf_state_set_nodes(lua_State *L, void *v) {
+    ConfState *s = (ConfState *)v;
+    auto nodes = s->mutable_nodes();
+    if (lua_istable(L, 3)) {
+        nodes->Clear();
+        lua_pushnil(L);
+        while (lua_next(L, 3) != 0) {
+            *nodes->Add() = luaL_checkinteger(L, -1);
+            lua_pop(L, 1);
+        }
+    } else if (lua_isnil(L, 3)) {
+        nodes->Clear();
+    } else if (!lua_isnil(L, 3)) {
+        luaL_error(L, "invalid nodes");
+    }
+    return 0;
+}
+
+int lconf_state_learners(lua_State *L, void *v) {
+    ConfState *s = (ConfState *)v;
     lua_createtable(L, s->learners().size(), 0);
     size_t i = 1;
     for (auto id : s->learners()) {
@@ -199,10 +316,32 @@ int lconf_state_learners(lua_State *L) {
     return 1;
 }
 
+int lconf_state_set_learners(lua_State *L, void *v) {
+    ConfState *s = (ConfState *)v;
+    auto nodes = s->mutable_learners();
+    if (lua_istable(L, 3)) {
+        nodes->Clear();
+        lua_pushnil(L);
+        while (lua_next(L, 3) != 0) {
+            *nodes->Add() = luaL_checkinteger(L, -1);
+            lua_pop(L, 1);
+        }
+    } else if (lua_isnil(L, 3)) {
+        nodes->Clear();
+    } else if (!lua_isnil(L, 3)) {
+        luaL_error(L, "invalid nodes");
+    }
+    return 0;
+}
+
 static const luaL_Reg conf_state_m[] = {
-    {"nodes", lconf_state_nodes},
-    {"learners", lconf_state_learners},
     {NULL, NULL}
+};
+
+static const Xet_reg_pre conf_state_getsets[] = {
+    {"nodes",lconf_state_nodes, lconf_state_set_nodes, 0},
+    {"learners",lconf_state_learners, lconf_state_set_learners, 0},
+    {NULL}
 };
 
 int lmessage_type(lua_State *L, void *v) {
@@ -214,7 +353,7 @@ int lmessage_type(lua_State *L, void *v) {
 
 int lmessage_set_type(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    s->set_type((MessageType)luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_type((MessageType)luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -227,7 +366,7 @@ int lmessage_to(lua_State *L, void *v) {
 
 int lmessage_set_to(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    s->set_to(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_to(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -240,7 +379,7 @@ int lmessage_from(lua_State *L, void *v) {
 
 int lmessage_set_from(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    s->set_from(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_from(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -253,7 +392,7 @@ int lmessage_term(lua_State *L, void *v) {
 
 int lmessage_set_term(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    s->set_term(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_term(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -266,7 +405,7 @@ int lmessage_logterm(lua_State *L, void *v) {
 
 int lmessage_set_logterm(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    s->set_logterm(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_logterm(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -279,7 +418,7 @@ int lmessage_index(lua_State *L, void *v) {
 
 int lmessage_set_index(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    s->set_index(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_index(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -292,7 +431,7 @@ int lmessage_commit(lua_State *L, void *v) {
 
 int lmessage_set_commit(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    s->set_commit(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_commit(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -309,21 +448,23 @@ int lmessage_snapshot(lua_State *L, void *v) {
 
 int lmessage_set_snapshot(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    auto snapshot = (Snapshot *)luaL_checkudata(L, 3, MT_SNAPSHOT);
-    *s->mutable_snapshot() = *snapshot;
+    if (!lua_isnil(L, 3)) {
+        auto snapshot = (Snapshot *)luaL_checkudata(L, 3, MT_SNAPSHOT);
+        *s->mutable_snapshot() = *snapshot;
+    }
     return 0;
 }
 
 int lmessage_reject(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    if (s->has_reject()) lua_pushinteger(L, s->reject());
+    if (s->has_reject()) lua_pushboolean(L, s->reject());
     else lua_pushnil(L);
     return 1;
 }
 
 int lmessage_set_reject(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    s->set_reject(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_reject(lua_toboolean(L, 3));
     return 0;
 }
 
@@ -336,7 +477,7 @@ int lmessage_rejecthint(lua_State *L, void *v) {
 
 int lmessage_set_rejecthint(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    s->set_rejecthint(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_rejecthint(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -352,9 +493,11 @@ int lmessage_context(lua_State *L, void *v) {
 
 int lmessage_set_context(lua_State *L, void *v) {
     Message *s = (Message *)v;
-    size_t l = 0;
-    auto p = luaL_checklstring(L, 3, &l);
-    s->set_context(p, l);
+    if (!lua_isnil(L, 3)) {
+        size_t l = 0;
+        auto p = luaL_checklstring(L, 3, &l);
+        s->set_context(p, l);
+    }
     return 0;
 }
 
@@ -382,7 +525,7 @@ int lmessage_set_entries(lua_State *L, void *v) {
         for (auto &s: *slice) {
             *entries->Add() = std::move(s);
         }
-    } else {
+    } else if (!lua_isnil(L, 3)) {
         luaL_error(L, "invalid entries");
     }
     return 0;
@@ -407,7 +550,7 @@ static const Xet_reg_pre message_getsets[] = {
 int lmessage_entry(lua_State *L) {
     auto msg = (Message *)luaL_checkudata(L, 1, MT_MESSAGE);
     auto idx = luaL_checkinteger(L, 2);
-    lua_pushlightuserdata(L, (void *)&msg->entries((int)idx));
+    lua_pushlightuserdata(L, (void *)&msg->entries((int)idx - 1));
     luaL_getmetatable(L, MT_ENTRY);
     lua_setmetatable(L, -2);
     return 1;
@@ -415,7 +558,7 @@ int lmessage_entry(lua_State *L) {
 
 static const luaL_Reg message_m[] = {
     {"__gc", lmessage_delete},
-    {"entry", lmessage_entry},
+    {"__array", lmessage_entry},
     {NULL, NULL}
 };
 
@@ -450,7 +593,7 @@ int lmessage_entries_size(lua_State *L) {
 
 int lmessage_entries_at(lua_State *L) {
     auto entries = (google::protobuf::RepeatedPtrField<Entry> *)luaL_checkudata(L, 1, MT_MSG_ENTRIES);
-    lua_pushlightuserdata(L, (void *)&entries->Get((int)luaL_checkinteger(L, 2)));
+    lua_pushlightuserdata(L, (void *)&entries->Get((int)luaL_checkinteger(L, 2) - 1));
     luaL_getmetatable(L, MT_ENTRY);
     lua_setmetatable(L, -2);
     return 1;
@@ -459,6 +602,8 @@ int lmessage_entries_at(lua_State *L) {
 static const luaL_Reg message_entries_m[] = {
     {"ipairs", lmessage_entries_ipairs},
     {"size", lmessage_entries_size},
+    {"__len", lmessage_entries_size},
+    {"__array", lmessage_entries_at},
     {"at", lmessage_entries_at},
     {NULL, NULL}
 };
@@ -472,7 +617,7 @@ int lhardstate_commit(lua_State *L, void *v) {
 
 int lhardstate_set_commit(lua_State *L, void *v) {
     HardState *s = (HardState *)v;
-    s->set_commit(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_commit(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -485,7 +630,7 @@ int lhardstate_term(lua_State *L, void *v) {
 
 int lhardstate_set_term(lua_State *L, void *v) {
     HardState *s = (HardState *)v;
-    s->set_term(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_term(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -498,7 +643,7 @@ int lhardstate_vote(lua_State *L, void *v) {
 
 int lhardstate_set_vote(lua_State *L, void *v) {
     HardState *s = (HardState *)v;
-    s->set_vote(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_vote(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -508,8 +653,25 @@ static int lhardstate_delete(lua_State *L) {
     return 0;
 }
 
+static int lhardstate_parser(lua_State *L) {
+    HardState *hs = (HardState *)luaL_checkudata(L, 1, MT_HARDSTATE);
+    size_t len = 0;
+    const char *p = luaL_checklstring(L, 2, &len);
+    lua_pushboolean(L, hs->ParseFromArray(p, (int)len));
+    return 1;
+}
+
+static int lhardstate_serialize(lua_State *L) {
+    HardState *cc = (HardState *)luaL_checkudata(L, 1, MT_HARDSTATE);
+    auto s = cc->SerializeAsString();
+    lua_pushlstring(L, s.c_str(), s.size());
+    return 1;
+}
+
 static const luaL_Reg hardstate_m[] = {
     {"__gc", lhardstate_delete},
+    {"parser", lhardstate_parser},
+    {"serialize", lhardstate_serialize},
     {NULL, NULL}
 };
 
@@ -550,7 +712,7 @@ int lconfchange_id(lua_State *L, void *v) {
 
 int lconfchange_set_id(lua_State *L, void *v) {
     ConfChange *s = (ConfChange *)v;
-    s->set_id(luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_id(luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -563,7 +725,7 @@ int lconfchange_type(lua_State *L, void *v) {
 
 int lconfchange_set_type(lua_State *L, void *v) {
     ConfChange *s = (ConfChange *)v;
-    s->set_type((ConfChangeType)luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_type((ConfChangeType)luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -576,7 +738,7 @@ int lconfchange_nodeid(lua_State *L, void *v) {
 
 int lconfchange_set_nodeid(lua_State *L, void *v) {
     ConfChange *s = (ConfChange *)v;
-    s->set_nodeid((ConfChangeType)luaL_checkinteger(L, 3));
+    if (!lua_isnil(L, 3)) s->set_nodeid((ConfChangeType)luaL_checkinteger(L, 3));
     return 0;
 }
 
@@ -592,9 +754,11 @@ int lconfchange_context(lua_State *L, void *v) {
 
 int lconfchange_set_context(lua_State *L, void *v) {
     ConfChange *s = (ConfChange *)v;
-    size_t l = 0;
-    auto p = luaL_checklstring(L, 3, &l);
-    s->set_context(p, l);
+    if (!lua_isnil(L, 3)) {
+        size_t l = 0;
+        auto p = luaL_checklstring(L, 3, &l);
+        s->set_context(p, l);
+    }
     return 0;
 }
 
@@ -623,6 +787,8 @@ static const luaL_Reg pb_m[] = {
     {"entry", lnew_entry},
     {"message", lnew_message},
     {"confchange", lnew_confchange},
+    {"hardstate", lnew_hardstate},
+    {"snapshot", lnew_snapshot},
     {"MessageType_Name", lMessageType_Name},
     {NULL, NULL}
 };
@@ -663,10 +829,10 @@ void regist_pb_class(lua_State *L) {
 
     lua_setfield(L, -2, "pb");
 
-    init_metatable(L, MT_ENTRY, entry_m);
-    init_metatable(L, MT_SNAPSHOT, snatshop_m);
-    init_metatable(L, MT_SNAPSHOT_METADATA, snatshop_metadata_m);
-    init_metatable(L, MT_CONFSTATE, conf_state_m);
+    init_metatable(L, MT_ENTRY, entry_m, entry_getsets);
+    init_metatable(L, MT_SNAPSHOT, snatshop_m, snatshop_getsets);
+    init_metatable(L, MT_SNAPSHOT_METADATA, snatshop_metadata_m, snatshop_metadata_getsets);
+    init_metatable(L, MT_CONFSTATE, conf_state_m, conf_state_getsets);
     init_metatable(L, MT_MESSAGE, message_m, message_getsets);
     init_metatable(L, MT_HARDSTATE, hardstate_m, hardstate_getsets);
     init_metatable(L, MT_MSG_ENTRIES, message_entries_m);

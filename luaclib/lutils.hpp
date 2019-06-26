@@ -21,10 +21,16 @@
 #define MT_READSTATE           "raft_readstate"
 #define MT_READSTATEVEC        "raft_readstate_vec"
 #define MT_CONFCHANGE          "raft_ConfChange"
+#define MT_LOG                 "raft_Log"
+#define MT_UINT64              "raft_uint64"
 
 #define REG_ENUM(L, V) \
     lua_pushinteger(L, V);\
-    lua_setfield(L, -2, #V) 
+    lua_setfield(L, -2, #V)
+
+#define REG_ENUM1(L, V, N) \
+    lua_pushinteger(L, V);\
+    lua_setfield(L, -2, N) 
 
 void regist_pb_class(lua_State *L);
 void regist_ready_class(lua_State *L);
