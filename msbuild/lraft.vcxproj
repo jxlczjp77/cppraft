@@ -101,11 +101,6 @@
     <ClInclude Include="..\luaclib\lstorage.hpp" />
     <ClInclude Include="..\luaclib\lutils.hpp" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="..\lualib\ldbstorage.lua" />
-    <None Include="..\test\ldbstorage_test.lua" />
-    <None Include="..\test\test.lua" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
