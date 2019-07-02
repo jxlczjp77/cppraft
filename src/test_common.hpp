@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <raft/raft.hpp>
+#include <list>
 
 using namespace raft;
 using namespace std;
@@ -27,7 +28,7 @@ void euqal_vec(const Vec1 &left, const Vec2 &right, const std::function<void(con
 		c(e1, e2);
 	}
 }
-unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, Logger &logger);
+Unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, Logger &logger);
 string ltoa(raft_log *l);
 string diffu(const string &a, const string &b);
 uint64_t mustTerm(const Result<uint64_t> &term);
@@ -73,7 +74,7 @@ struct network {
 	bool(*msgHook)(const Message &m);
 
 	void send(MessagePtr &&msg);
-	void send(list<MessagePtr> &msgs);
+	void send(std::list<MessagePtr> &msgs);
 	void drop(uint64_t from, uint64_t to, double perc);
 	void cut(uint64_t one, uint64_t other);
 	void isolate(uint64_t id);

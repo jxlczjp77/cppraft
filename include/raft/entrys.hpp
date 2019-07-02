@@ -60,7 +60,7 @@ namespace raft {
 
 		typedef Entry value_type;
 
-		virtual ~IEntrySlice() = 0 {}
+		virtual ~IEntrySlice() {}
 		virtual size_t size() const = 0;
 		virtual bool empty() const = 0;
 		virtual Entry &operator[](size_t i) = 0;
@@ -98,8 +98,8 @@ namespace raft {
 	typedef std::unique_ptr<IEntrySlice> IEntrySlicePtr;
 	class EntryRange : public IEntrySlice {
 	public:
-		IEntrySlicePtr unstable;
 		IEntrySlicePtr storage;
+		IEntrySlicePtr unstable;
 
 		EntryRange(IEntrySlicePtr &&storage_ = IEntrySlicePtr(), IEntrySlicePtr &&unstable_ = IEntrySlicePtr());
 		EntryRange(EntryRange &&r);
@@ -117,12 +117,12 @@ namespace raft {
 
 	namespace detail {
 		template<class T>
-		T make_slice_impl(const T &c, size_t start_, size_t count_, const std::true_type&) {
+		T make_slice_impl(const T &c, size_t start_, size_t count_, std::true_type) {
 			return T(*c.container, start_ + c.start, count_);
 		}
 
 		template<class T>
-		EntrySlice<T> make_slice_impl(const T &c, size_t start_, size_t count_, const std::false_type&) {
+		EntrySlice<T> make_slice_impl(const T &c, size_t start_, size_t count_, std::false_type) {
 			return EntrySlice<T>(c, start_, count_);
 		}
 	}
@@ -130,7 +130,7 @@ namespace raft {
 	template<class T>
 	typename std::conditional<std::is_base_of<IEntrySlice, T>::value, T, EntrySlice<T>>::type
 		make_slice(const T &c, size_t start_ = 0, size_t count_ = 0) {
-		return detail::make_slice_impl(c, start_, count_, std::is_base_of<IEntrySlice, T>::type());
+		return detail::make_slice_impl(c, start_, count_, std::conditional_t<std::is_base_of<IEntrySlice, T>::value, std::true_type, std::false_type>());
 	}
 	inline const IEntrySlice &make_slice(const IEntrySlice &c) {
 		return c;

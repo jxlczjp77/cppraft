@@ -18,8 +18,8 @@ namespace raft {
 	};
 
 	struct readIndexStatus {
-		Message req;
 		uint64_t index;
+		Message req;
 		map<uint64_t, bool> acks;
 		readIndexStatus(uint64_t idx, const Message &msg)
 			: index(idx), req(msg) {

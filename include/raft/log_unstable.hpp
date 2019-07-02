@@ -5,12 +5,12 @@
 namespace raft {
 	class Logger;
 
-	class unstable {
+	class Unstable {
 		friend class raft_log;
 	public:
-		unstable();
-		~unstable();
-		unstable(unstable &&u);
+		Unstable();
+		~Unstable();
+		Unstable(Unstable &&u);
 
 		Result<uint64_t> maybeFirstIndex() const;
 		Result<uint64_t> maybeLastIndex() const;

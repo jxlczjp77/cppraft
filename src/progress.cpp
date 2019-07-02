@@ -116,7 +116,7 @@ namespace raft {
 		return (boost::format("next = %1%, match = %2%, state = %3%, waiting = %4%, pendingSnapshot = %5%") % Next % Match % State % IsPaused() % PendingSnapshot).str();
 	}
 
-	inflights::inflights(int s) : size(s), count(0), start(0) {}
+	inflights::inflights(int s) : start(0), count(0), size(s) {}
 
 	// add adds an inflight into inflights
 	void inflights::add(uint64_t inflight) {
@@ -127,7 +127,7 @@ namespace raft {
 		if (next >= size) {
 			next -= size;
 		}
-		if (next >= buffer.size()) {
+		if ((size_t)next >= buffer.size()) {
 			growBuf();
 		}
 		buffer[next] = inflight;
@@ -141,7 +141,7 @@ namespace raft {
 		size_t newSize = buffer.size() * 2;
 		if (newSize == 0) {
 			newSize = 1;
-		} else if (newSize > size) {
+		} else if (newSize > (size_t)size) {
 			newSize = size;
 		}
 		buffer.reserve(newSize);

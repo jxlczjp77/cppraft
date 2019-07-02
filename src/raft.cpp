@@ -1,4 +1,4 @@
-﻿#include <Raft/Raft.hpp>
+﻿#include <raft/raft.hpp>
 #include <boost/throw_exception.hpp>
 #include <boost/format.hpp>
 #include <boost/random.hpp>
@@ -368,7 +368,7 @@ namespace raft {
 					r->becomeLeader();
 					r->bcastAppend();
 				}
-			} else if (quorum == r->votes.size() - gr) {
+			} else if ((size_t)quorum == r->votes.size() - gr) {
 				// pb.MsgPreVoteResp contains future term of pre-candidate
 				// m.Term > r.Term; reuse r.Term
 				r->becomeFollower(r->Term, None);

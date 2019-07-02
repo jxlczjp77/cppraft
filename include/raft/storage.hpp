@@ -30,7 +30,7 @@ namespace raft {
 		template<class EntryContainer> ErrorCode Append(const EntryContainer &ents) {
 			return AppendSlice(make_slice(ents));
 		}
-		template<> ErrorCode Append<Entry>(const Entry &ent) {
+		ErrorCode Append(const Entry &ent) {
 			std::array<Entry, 1> s = { std::move(ent) };
 			return AppendSlice(make_slice(s));
 		}

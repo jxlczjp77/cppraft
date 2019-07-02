@@ -210,7 +210,7 @@ tostring(lua_State *L) {
         luaL_pushresult(&b);
     } else {
         int base = (int)luaL_checkinteger(L, 2);
-        int shift, mask;
+        int shift = 0, mask = 0;
         switch (base) {
         case 0:
         {

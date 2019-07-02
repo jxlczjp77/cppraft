@@ -2,26 +2,26 @@
 #define DEFAULT_ENTRY_LEN 100
 
 namespace raft {
-	unstable::unstable() : snapshot(nullptr), entries(100) {
+	Unstable::Unstable() : snapshot(nullptr), entries(100) {
 	}
 
-	unstable::~unstable() {
+	Unstable::~Unstable() {
 	}
 
-	unstable::unstable(unstable &&u)
+	Unstable::Unstable(Unstable &&u)
 		: snapshot(std::move(u.snapshot)), entries(std::move(u.entries)), offset(u.offset), logger(u.logger) {
 		u.offset = 0;
 		u.logger = nullptr;
 	}
 
-	Result<uint64_t> unstable::maybeFirstIndex() const {
+	Result<uint64_t> Unstable::maybeFirstIndex() const {
 		if (snapshot) {
 			return { snapshot->metadata().index() + 1 };
 		}
 		return { 0, ErrFalse };
 	}
 
-	Result<uint64_t> unstable::maybeLastIndex() const {
+	Result<uint64_t> Unstable::maybeLastIndex() const {
 		if (!entries.empty()) {
 			return { offset + uint64_t(entries.size()) - 1 };
 		}
@@ -31,7 +31,7 @@ namespace raft {
 		return { 0, ErrFalse };
 	}
 
-	Result<uint64_t> unstable::maybeTerm(uint64_t i) const {
+	Result<uint64_t> Unstable::maybeTerm(uint64_t i) const {
 		if (i < offset) {
 			if (snapshot && snapshot->metadata().index() == i) {
 				return { snapshot->metadata().term() };
@@ -45,7 +45,7 @@ namespace raft {
 		return { 0, ErrFalse };
 	}
 
-	void unstable::stableTo(uint64_t i, uint64_t t) {
+	void Unstable::stableTo(uint64_t i, uint64_t t) {
 		auto gt = maybeTerm(i);
 		if (!gt.Ok()) {
 			return;
@@ -57,19 +57,19 @@ namespace raft {
 		}
 	}
 
-	void unstable::stableSnapTo(uint64_t i) {
+	void Unstable::stableSnapTo(uint64_t i) {
 		if (snapshot && snapshot->metadata().index() == i) {
 			snapshot.reset();
 		}
 	}
 
-	void unstable::restore(const Snapshot &sh) {
+	void Unstable::restore(const Snapshot &sh) {
 		offset = sh.metadata().index() + 1;
 		entries.clear();
 		snapshot = std::make_unique<Snapshot>(sh);
 	}
 
-	void unstable::truncateAndAppend(const IEntrySlice &ents) {
+	void Unstable::truncateAndAppend(const IEntrySlice &ents) {
 		uint64_t after = ents[0].index();
 		if (after == offset + uint64_t(entries.size())) {
 		} else if (after <= offset) {
@@ -87,12 +87,12 @@ namespace raft {
 		entries.insert(entries.end(), ents.begin(), ents.end());
 	}
 
-	IEntrySlicePtr unstable::slice(uint64_t lo, uint64_t hi) {
+	IEntrySlicePtr Unstable::slice(uint64_t lo, uint64_t hi) {
 		mustCheckOutOfBounds(lo, hi);
 		return std::make_unique<EntrySlice<EntryUnstableVec>>(entries, lo - offset, hi - offset);
 	}
 
-	void unstable::mustCheckOutOfBounds(uint64_t lo, uint64_t hi) {
+	void Unstable::mustCheckOutOfBounds(uint64_t lo, uint64_t hi) {
 		if (lo > hi) {
 			fLog(logger, "invalid unstable.slice %1% > %2%", lo, hi);
 		}

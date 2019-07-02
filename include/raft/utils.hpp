@@ -25,8 +25,8 @@ namespace raft {
     const char *error_string(ErrorCode c);
 
     template<class Value> struct Result {
-        ErrorCode err;
         Value value;
+        ErrorCode err;
 
         Result(Value &&v = Value(), ErrorCode e = OK) : value(std::move(v)), err(e) {}
         Result(ErrorCode e) : err(e) {}

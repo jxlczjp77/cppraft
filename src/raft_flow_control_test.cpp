@@ -84,7 +84,7 @@ BOOST_AUTO_TEST_CASE(TestMsgAppFlowControlRecvHeartbeat) {
 	// force the progress to be in replicate state
 	pr2->becomeReplicate();
 	// fill in the inflights window
-	for (size_t i = 0; i < r->maxInflight; i++) {
+	for (int i = 0; i < r->maxInflight; i++) {
 		r->Step(*make_message(1, 1, MsgProp, 0, 0, false, { makeEntry(0, 0, "somedata") }));
 		r->readMessages();
 	}

@@ -92,7 +92,7 @@ static int lrawnode_has_ready(lua_State *L) {
 static int lrawnode_step(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     auto msg = (Message *)luaL_checkudata(L, 2, MT_MESSAGE);
-    raft::ErrorCode err;
+    raft::ErrorCode err = OK;
     try {
         err = node->Step(*msg);
     } catch (const std::exception &e) {
@@ -125,7 +125,7 @@ static int lrawnode_campaign(lua_State *L) {
 
 static int lrawnode_propose(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
-    raft::ErrorCode err;
+    raft::ErrorCode err = OK;
     try {
         err = node->Propose(luaL_checkstring(L, 2));
     } catch (const std::exception &e) {
@@ -138,7 +138,7 @@ static int lrawnode_propose(lua_State *L) {
 static int lrawnode_propose_confchange(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     auto r = (ConfChange *)luaL_checkudata(L, 2, MT_CONFCHANGE);
-    raft::ErrorCode err;
+    raft::ErrorCode err = OK;
     try {
         err = node->ProposeConfChange(*r);
     } catch (const std::exception &e) {
@@ -654,60 +654,62 @@ static const Xet_reg_pre log_getsets[] = {
 };
 
 void regist_uint64(lua_State *L);
-extern "C" LUA_API int luaopen_lraft(lua_State *L) {
-    luaL_checkversion(L);
-    luaL_Reg l[] = {
-        { "rawnode", lrawnode },
-        { "config", lconfig },
-        { "memorystorage", lmemorystorage },
-        { "ldbstorage", lldbstorage },
-        { "IsLocalMsg", lislocalmsg },
-        { "IsEmptyHardState", lIsEmptyHardState },
-        { "readstate", lreadstate },
-        { "default_logger", ldefault_log },
-        { NULL, NULL },
-    };
-    luaL_newlib(L, l);
-    init_metatable(L, MT_RAWNODE, rawnode_m, rawnode_getsets);
-    init_metatable(L, MT_CONFIG, config_m, config_getsets);
-    init_metatable(L, MT_PEER, peer_m, peer_getsets);
-    init_metatable(L, MT_MEMORYSTORAGE, memorystorage_m, memorystorage_getsets);
-    init_metatable(L, MT_LDBSTORAGE, ldbstorage_m);
-    init_metatable(L, MT_SLICE, slice_m, slice_getsets);
-    init_metatable(L, MT_SLICE_PTR, slice_ptr_m, slice_ptr_getsets);
-    init_metatable(L, MT_LOG, log_m, log_getsets);
-    regist_pb_class(L);
-    regist_ready_class(L);
-    regist_uint64(L);
+extern "C" {
+    LUA_API int luaopen_lraft(lua_State *L) {
+        luaL_checkversion(L);
+        luaL_Reg l[] = {
+            { "rawnode", lrawnode },
+            { "config", lconfig },
+            { "memorystorage", lmemorystorage },
+            { "ldbstorage", lldbstorage },
+            { "IsLocalMsg", lislocalmsg },
+            { "IsEmptyHardState", lIsEmptyHardState },
+            { "readstate", lreadstate },
+            { "default_logger", ldefault_log },
+            { NULL, NULL },
+        };
+        luaL_newlib(L, l);
+        init_metatable(L, MT_RAWNODE, rawnode_m, rawnode_getsets);
+        init_metatable(L, MT_CONFIG, config_m, config_getsets);
+        init_metatable(L, MT_PEER, peer_m, peer_getsets);
+        init_metatable(L, MT_MEMORYSTORAGE, memorystorage_m, memorystorage_getsets);
+        init_metatable(L, MT_LDBSTORAGE, ldbstorage_m);
+        init_metatable(L, MT_SLICE, slice_m, slice_getsets);
+        init_metatable(L, MT_SLICE_PTR, slice_ptr_m, slice_ptr_getsets);
+        init_metatable(L, MT_LOG, log_m, log_getsets);
+        regist_pb_class(L);
+        regist_ready_class(L);
+        regist_uint64(L);
 
-    REG_ENUM(L, StateFollower);
-    REG_ENUM(L, StateCandidate);
-    REG_ENUM(L, StateLeader);
-    REG_ENUM(L, StatePreCandidate);
+        REG_ENUM(L, StateFollower);
+        REG_ENUM(L, StateCandidate);
+        REG_ENUM(L, StateLeader);
+        REG_ENUM(L, StatePreCandidate);
 
-    REG_ENUM(L, OK);
-    REG_ENUM(L, ErrCompacted);
-    REG_ENUM(L, ErrSnapOutOfDate);
-    REG_ENUM(L, ErrUnavailable);
-    REG_ENUM(L, ErrSnapshotTemporarilyUnavailable);
-    REG_ENUM(L, ErrSeriaFail);
-    REG_ENUM(L, ErrAppendOutOfData);
-    REG_ENUM(L, ErrProposalDropped);
-    REG_ENUM(L, ErrStepLocalMsg);
-    REG_ENUM(L, ErrStepPeerNotFound);
-    REG_ENUM(L, ErrFalse);
+        REG_ENUM(L, OK);
+        REG_ENUM(L, ErrCompacted);
+        REG_ENUM(L, ErrSnapOutOfDate);
+        REG_ENUM(L, ErrUnavailable);
+        REG_ENUM(L, ErrSnapshotTemporarilyUnavailable);
+        REG_ENUM(L, ErrSeriaFail);
+        REG_ENUM(L, ErrAppendOutOfData);
+        REG_ENUM(L, ErrProposalDropped);
+        REG_ENUM(L, ErrStepLocalMsg);
+        REG_ENUM(L, ErrStepPeerNotFound);
+        REG_ENUM(L, ErrFalse);
 
-    REG_ENUM1(L, LogLevel::all, "LOG_ALL");
-    REG_ENUM1(L, LogLevel::debug, "LOG_DEBUG");
-    REG_ENUM1(L, LogLevel::info, "LOG_INFO");
-    REG_ENUM1(L, LogLevel::warn, "LOG_WARN");
-    REG_ENUM1(L, LogLevel::error, "LOG_ERROR");
-    REG_ENUM1(L, LogLevel::fatal, "LOG_FATAL");
-    REG_ENUM1(L, LogLevel::off, "LOG_OFF");
+        REG_ENUM1(L, LogLevel::all, "LOG_ALL");
+        REG_ENUM1(L, LogLevel::debug, "LOG_DEBUG");
+        REG_ENUM1(L, LogLevel::info, "LOG_INFO");
+        REG_ENUM1(L, LogLevel::warn, "LOG_WARN");
+        REG_ENUM1(L, LogLevel::error, "LOG_ERROR");
+        REG_ENUM1(L, LogLevel::fatal, "LOG_FATAL");
+        REG_ENUM1(L, LogLevel::off, "LOG_OFF");
 
-    lua_pushinteger(L, noLimit);
-    lua_setfield(L, -2, "noLimit");
-    lua_pushinteger(L, None);
-    lua_setfield(L, -2, "None");
-    return 1;
+        lua_pushinteger(L, noLimit);
+        lua_setfield(L, -2, "noLimit");
+        lua_pushinteger(L, None);
+        lua_setfield(L, -2, "None");
+        return 1;
+    }
 }

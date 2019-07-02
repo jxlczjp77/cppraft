@@ -27,25 +27,25 @@ struct Ready
 	// The current volatile state of a Node.
 	// SoftState will be nil if there is no update.
 	// It is not required to consume or store SoftState.
-	boost::optional<SoftState> SoftState;
+	boost::optional<raft::SoftState> SoftState;
 
 	// The current state of a Node to be saved to stable storage BEFORE
 	// Messages are sent.
 	// HardState will be equal to empty state if there is no update.
-	boost::optional<HardState> HardState;
+	boost::optional<raftpb::HardState> HardState;
 
 	// ReadStates can be used for node to serve linearizable read requests locally
 	// when its applied index is greater than the index in ReadState.
 	// Note that the readState will be returned when raft receives msgReadIndex.
 	// The returned is only valid for the request that requested to read.
-	vector<ReadState> ReadStates;
+	vector<raft::ReadState> ReadStates;
 
 	// Entries specifies entries to be saved to stable storage BEFORE
 	// Messages are sent.
 	EntrySlice<EntryUnstableVec> Entries;
 
 	// Snapshot specifies the snapshot to be saved to stable storage.
-	boost::optional<Snapshot> Snapshot;
+	boost::optional<raftpb::Snapshot> Snapshot;
 
 	// CommittedEntries specifies entries to be committed to a
 	// store/state-machine. These have previously been committed to stable

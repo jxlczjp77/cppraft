@@ -20,9 +20,6 @@
     <ClCompile Include="..\src\util_test.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\test_common.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\progress_test.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -42,6 +39,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="..\src\rawnode_test.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\common_test.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

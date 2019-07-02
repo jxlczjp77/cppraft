@@ -13,7 +13,7 @@ static int traceback(lua_State *L) {
 }
 
 LDBStorage::LDBStorage(lua_State *L) : m_l(L) {
-    memset(m_funcs, sizeof(m_funcs), 0);
+    memset(m_funcs, 0, sizeof(m_funcs));
 }
 
 LDBStorage::~LDBStorage() {

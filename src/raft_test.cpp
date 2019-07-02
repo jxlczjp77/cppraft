@@ -6,7 +6,7 @@
 #include <boost/random/uniform_real.hpp>
 #include <boost/random/variate_generator.hpp>
 #include <boost/format.hpp>
-#define DISABLE_RAFT_TEST
+// #define DISABLE_RAFT_TEST
 
 using namespace raft;
 using namespace raftpb;
@@ -392,7 +392,7 @@ BOOST_AUTO_TEST_CASE(TestLearnerElectionTimeout) {
 
 	// n2 is learner. Learner should not start election even when times out.
 	setRandomizedElectionTimeout(n2, n2->electionTimeout);
-	for (size_t i = 0; i < n2->electionTimeout; i++) {
+	for (int i = 0; i < n2->electionTimeout; i++) {
 		n2->tick();
 	}
 
@@ -414,7 +414,7 @@ BOOST_AUTO_TEST_CASE(TestLearnerPromotion) {
 
 	// n1 should become leader
 	setRandomizedElectionTimeout(n1, n1->electionTimeout);
-	for (size_t i = 0; i < n1->electionTimeout; i++) {
+	for (int i = 0; i < n1->electionTimeout; i++) {
 		n1->tick();
 	}
 
@@ -429,7 +429,7 @@ BOOST_AUTO_TEST_CASE(TestLearnerPromotion) {
 
 	// n2 start election, should become leader
 	setRandomizedElectionTimeout(n2, n2->electionTimeout);
-	for (size_t i = 0; i < n2->electionTimeout; i++) {
+	for (int i = 0; i < n2->electionTimeout; i++) {
 		n2->tick();
 	}
 
@@ -545,7 +545,7 @@ BOOST_AUTO_TEST_CASE(TestLearnerLogReplication) {
 	n2->becomeFollower(1, None);
 
 	setRandomizedElectionTimeout(n1, n1->electionTimeout);
-	for (size_t i = 0; i < n1->electionTimeout; i++) {
+	for (int i = 0; i < n1->electionTimeout; i++) {
 		n1->tick();
 	}
 	
@@ -1361,7 +1361,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderStepdownWhenQuorumActive) {
 	sm->becomeCandidate();
 	sm->becomeLeader();
 
-	for (size_t i = 0; i < sm->electionTimeout + 1; i++) {
+	for (int i = 0; i < sm->electionTimeout + 1; i++) {
 		sm->Step(*make_message(2, 0, MsgHeartbeatResp, 0, sm->Term));
 		sm->tick();
 	}
@@ -1376,7 +1376,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderStepdownWhenQuorumLost) {
 	sm->becomeCandidate();
 	sm->becomeLeader();
 
-	for (size_t i = 0; i < sm->electionTimeout + 1; i++) {
+	for (int i = 0; i < sm->electionTimeout + 1; i++) {
 		sm->tick();
 	}
 
@@ -1395,7 +1395,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderSupersedingWithCheckQuorum) {
 	auto nt = newNetwork({ a, b, c });
 	setRandomizedElectionTimeout(b, b->electionTimeout + 1);
 
-	for (size_t i = 0; i < b->electionTimeout; i++) {
+	for (int i = 0; i < b->electionTimeout; i++) {
 		b->tick();
 	}
 
@@ -1410,7 +1410,7 @@ BOOST_AUTO_TEST_CASE(TestLeaderSupersedingWithCheckQuorum) {
 	BOOST_REQUIRE_EQUAL(c->state, StateCandidate);
 
 	// Letting b's electionElapsed reach to electionTimeout
-	for (size_t i = 0; i < b->electionTimeout; i++) {
+	for (int i = 0; i < b->electionTimeout; i++) {
 		b->tick();
 	}
 	nt->send(make_message(3, 3, MsgHup));
@@ -1441,10 +1441,10 @@ BOOST_AUTO_TEST_CASE(TestLeaderElectionWithCheckQuorum) {
 	// because the value might be reset to electionTimeout since the last state changes
 	setRandomizedElectionTimeout(a, a->electionTimeout + 1);
 	setRandomizedElectionTimeout(b, b->electionTimeout + 2);
-	for (size_t i = 0; i < a->electionTimeout; i++) {
+	for (int i = 0; i < a->electionTimeout; i++) {
 		a->tick();
 	}
-	for (size_t i = 0; i < b->electionTimeout; i++) {
+	for (int i = 0; i < b->electionTimeout; i++) {
 		b->tick();
 	}
 	nt->send(make_message(3, 3, MsgHup));
@@ -1469,7 +1469,7 @@ BOOST_AUTO_TEST_CASE(TestFreeStuckCandidateWithCheckQuorum) {
 	auto nt = newNetwork({ a, b, c });
 	setRandomizedElectionTimeout(b, b->electionTimeout + 1);
 
-	for (size_t i = 0; i < b->electionTimeout; i++) {
+	for (int i = 0; i < b->electionTimeout; i++) {
 		b->tick();
 	}
 	nt->send(make_message(1, 1, MsgHup));
@@ -1515,7 +1515,7 @@ BOOST_AUTO_TEST_CASE(TestNonPromotableVoterWithCheckQuorum) {
 
 	BOOST_REQUIRE_EQUAL(b->promotable(), false);
 
-	for (size_t i = 0; i < b->electionTimeout; i++) {
+	for (int i = 0; i < b->electionTimeout; i++) {
 		b->tick();
 	}
 	nt->send(make_message(1, 1, MsgHup));
@@ -1560,7 +1560,7 @@ BOOST_AUTO_TEST_CASE(TestDisruptiveFollower) {
 	// election timeouts (e.g. multi-datacenter deploy)
 	// Or leader messages are being delayed while ticks elapse
 	setRandomizedElectionTimeout(n3, n3->electionTimeout + 2);
-	for (size_t i = 0; i < n3->randomizedElectionTimeout - 1; i++) {
+	for (int i = 0; i < n3->randomizedElectionTimeout - 1; i++) {
 		n3->tick();
 	}
 
@@ -1687,7 +1687,7 @@ BOOST_AUTO_TEST_CASE(TestReadOnlyOptionSafe) {
 	auto nt = newNetwork({ a, b, c });
 	setRandomizedElectionTimeout(b, b->electionTimeout + 1);
 
-	for (size_t i = 0; i < b->electionTimeout; i++) {
+	for (int i = 0; i < b->electionTimeout; i++) {
 		b->tick();
 	}
 	nt->send(make_message(1, 1, MsgHup));
@@ -1710,7 +1710,7 @@ BOOST_AUTO_TEST_CASE(TestReadOnlyOptionSafe) {
 
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
 		auto &tt = tests[i];
-		for (size_t j = 0; j < tt.proposals; j++) {
+		for (int j = 0; j < tt.proposals; j++) {
 			nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
 		}
 
@@ -1739,7 +1739,7 @@ BOOST_AUTO_TEST_CASE(TestReadOnlyOptionLease) {
 	auto nt = newNetwork({ a, b, c });
 	setRandomizedElectionTimeout(b, b->electionTimeout + 1);
 
-	for (size_t i = 0; i < b->electionTimeout; i++) {
+	for (int i = 0; i < b->electionTimeout; i++) {
 		b->tick();
 	}
 	nt->send(make_message(1, 1, MsgHup));
@@ -1762,7 +1762,7 @@ BOOST_AUTO_TEST_CASE(TestReadOnlyOptionLease) {
 
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
 		auto &tt = tests[i];
-		for (size_t j = 0; j < tt.proposals; j++) {
+		for (int j = 0; j < tt.proposals; j++) {
 			nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
 		}
 
@@ -1825,7 +1825,7 @@ BOOST_AUTO_TEST_CASE(TestReadOnlyForNewLeader) {
 	nt->recover();
 
 	// Force peer a to commit a log entry at its term
-	for (size_t i = 0; i < sm->heartbeatTimeout; i++) {
+	for (int i = 0; i < sm->heartbeatTimeout; i++) {
 		sm->tick();
 	}
 	nt->send(make_message(1, 1, MsgProp, 0, 0, false, { {} }));
@@ -2022,7 +2022,7 @@ BOOST_AUTO_TEST_CASE(TestSendAppendForProgressProbe) {
 		}
 
 		BOOST_REQUIRE_EQUAL(r->prs[2]->IsPaused(), true);
-		for (size_t j = 0; j < 10; j++) {
+		for (int j = 0; j < 10; j++) {
 			mustAppendEntry(r.get(), { makeEntry(0, 0, "somedata") });
 			r->sendAppend(2);
 			auto msg = r->readMessages();
@@ -2030,7 +2030,7 @@ BOOST_AUTO_TEST_CASE(TestSendAppendForProgressProbe) {
 		}
 
 		// do a heartbeat
-		for (size_t j = 0; j < r->heartbeatTimeout; j++) {
+		for (int j = 0; j < r->heartbeatTimeout; j++) {
 			r->Step(*make_message(1, 1, MsgBeat));
 		}
 		BOOST_REQUIRE_EQUAL(r->prs[2]->IsPaused(), true);
@@ -2200,7 +2200,7 @@ BOOST_AUTO_TEST_CASE(TestLearnerReceiveSnapshot) {
 	auto nt = newNetwork({ n1, n2 });
 
 	setRandomizedElectionTimeout(n1, n1->electionTimeout);
-	for (size_t i = 0; i < n1->electionTimeout; i++) {
+	for (int i = 0; i < n1->electionTimeout; i++) {
 		n1->tick();
 	}
 	
@@ -2417,7 +2417,7 @@ BOOST_AUTO_TEST_CASE(TestAddNodeCheckQuorum) {
 	r->becomeCandidate();
 	r->becomeLeader();
 
-	for (auto i = 0; i < r->electionTimeout-1; i++) {
+	for (int i = 0; i < r->electionTimeout-1; i++) {
 		r->tick();
 	}
 
@@ -2431,7 +2431,7 @@ BOOST_AUTO_TEST_CASE(TestAddNodeCheckQuorum) {
 
 	// After another electionTimeout ticks without hearing from node 2,
 	// node 1 should step down.
-	for (size_t i = 0; i < r->electionTimeout; i++) {
+	for (int i = 0; i < r->electionTimeout; i++) {
 		r->tick();
 	}
 
@@ -3162,7 +3162,6 @@ networkptr newNetworkWithConfig(void (*configFunc)(Config &), const vector<state
 		auto &p = peers[j];
 		uint64_t id = peerAddrs[j];
 		testRaft *pTestRaft = nullptr;
-		blackHole *pBlackHole = nullptr;
 		if (!p) {
 			nstorage[id] = std::make_shared<MemoryStorage>();
 			auto cfg = newTestConfig(id, vector<uint64_t>{ peerAddrs }, 10, 1, nstorage[id]);
@@ -3466,7 +3465,7 @@ void testRecvMsgVote(MessageType msgType) {
 		auto &tt = tests[i];
 		auto sm = newTestRaft(1, { 1 }, 10, 1, std::make_unique<MemoryStorage>());
 		sm->state = tt.state;
-		switch (tt.state) {
+		switch ((int)tt.state) {
 		case StateFollower:
 			sm->step = stepFollower;
 			break;
@@ -3531,7 +3530,7 @@ void testCandidateResetTerm(MessageType mt) {
 
 	// trigger campaign in isolated c
 	c->resetRandomizedElectionTimeout();
-	for (size_t i = 0; i < c->randomizedElectionTimeout; i++) {
+	for (int i = 0; i < c->randomizedElectionTimeout; i++) {
 		c->tick();
 	}
 

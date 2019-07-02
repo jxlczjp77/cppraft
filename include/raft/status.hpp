@@ -1,11 +1,11 @@
 ﻿#pragma once
 #include <raft/raft.pb.h>
 #include <raft/utils.hpp>
+#include <raft/progress.hpp>
 
 namespace raft {
 	using namespace raftpb;
 	using namespace std;
-	struct Progress;
     class Raft;
 
     // SoftState provides state that is useful for logging and debugging.
@@ -26,11 +26,11 @@ namespace raft {
 	struct Status {
 		uint64_t ID;
 
-		HardState HardState;
-		SoftState SoftState;
+		raftpb::HardState HardState;
+		raft::SoftState SoftState;
 
 		uint64_t Applied;
-		map<uint64_t, Progress*> Progress;
+		map<uint64_t, raft::Progress*> Progress;
 
 		uint64_t LeadTransferee;
 

@@ -29,7 +29,7 @@ namespace raft {
 		template<class EntryContainer> uint64_t append(const EntryContainer &ents) {
 			return appendSlice(make_slice(ents));
 		}
-		template<> uint64_t append<Entry>(const Entry &ent) {
+		uint64_t append(const Entry &ent) {
 			std::array<Entry, 1> s = { std::move(ent) };
 			return appendSlice(make_slice(s));
 		}
@@ -52,7 +52,7 @@ namespace raft {
 
 	public:
 		StoragePtr storage;
-		unstable unstable;
+		Unstable unstable;
 
 		uint64_t committed;
 		uint64_t applied;

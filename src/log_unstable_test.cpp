@@ -23,7 +23,7 @@ BOOST_AUTO_TEST_CASE(TestUnstableMaybeFirstIndex) {
 
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
+		Unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
 		auto index = u.maybeFirstIndex();
 		BOOST_REQUIRE_EQUAL(index.err == OK, tt.wok);
 		BOOST_REQUIRE_EQUAL(index.value, tt.windex);
@@ -43,12 +43,12 @@ BOOST_AUTO_TEST_CASE(TestMaybeLastIndex) {
 		{{ makeEntry(5, 1)}, 5, makeSnapshot(4, 1),true, 5,},
 		// last in snapshot
 		{{}, 5, makeSnapshot(4, 1),true, 4,},
-		// empty unstable
+		// empty Unstable
 		{{}, 0, nullptr,false, 0,},
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
+		Unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
 		auto index = u.maybeLastIndex();
 		BOOST_REQUIRE_EQUAL(index.err == OK, tt.wok);
 		BOOST_REQUIRE_EQUAL(index.value, tt.windex);
@@ -80,7 +80,7 @@ BOOST_AUTO_TEST_CASE(TestUnstableMaybeTerm) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
+		Unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
 		auto term = u.maybeTerm(tt.index);
 		BOOST_REQUIRE_EQUAL(term.err == OK, tt.wok);
 		BOOST_REQUIRE_EQUAL(term.value, tt.wterm);
@@ -88,7 +88,7 @@ BOOST_AUTO_TEST_CASE(TestUnstableMaybeTerm) {
 }
 
 BOOST_AUTO_TEST_CASE(TestUnstableRestore) {
-	unstable u = make_unstable(makeSnapshot(4, 1), { makeEntry(5, 1) }, 5, DefaultLogger::instance());
+	Unstable u = make_unstable(makeSnapshot(4, 1), { makeEntry(5, 1) }, 5, DefaultLogger::instance());
 	auto s = makeSnapshot(6, 2);
 	u.restore(*s);
 
@@ -124,7 +124,7 @@ BOOST_AUTO_TEST_CASE(TestUnstableStableTo) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
+		Unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
 		u.stableTo(tt.index, tt.term);
 		BOOST_REQUIRE_EQUAL(u.offset, tt.woffset);
 		BOOST_REQUIRE_EQUAL(u.entries.size(), tt.wlen);
@@ -146,7 +146,7 @@ BOOST_AUTO_TEST_CASE(TestUnstableTruncateAndAppend) {
 			{ makeEntry(5, 1)}, 5, nullptr, { makeEntry(6, 1), makeEntry(7, 1)},
 			5, {makeEntry(5, 1), makeEntry(6, 1), makeEntry(7, 1)},
 		},
-		// replace the unstable entries
+		// replace the Unstable entries
 		{
 			{ makeEntry(5, 1)}, 5, nullptr, { makeEntry(5, 2), makeEntry(6, 2)},
 			5, {makeEntry(5, 2), makeEntry(6, 2)},
@@ -167,7 +167,7 @@ BOOST_AUTO_TEST_CASE(TestUnstableTruncateAndAppend) {
 	};
 	for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
 		auto &tt = tests[i];
-		unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
+		Unstable u = make_unstable(std::move(tt.snap), std::move(tt.entries), tt.offset, DefaultLogger::instance());
 		u.truncateAndAppend(make_slice(tt.toappend));
 		BOOST_REQUIRE_EQUAL(u.offset, tt.woffset);
 		equal_entrys(u.entries, tt.wentries);

@@ -241,7 +241,7 @@ BOOST_AUTO_TEST_CASE(TestRawNodeStart) {
 	Entry ent1 = makeEntry(1, 1, string(ccdata), EntryConfChange);
 	Entry ent2 = makeEntry(3, 2, "foo");
 	struct {
-		boost::optional<HardState> HardState;
+		boost::optional<raftpb::HardState> HardState;
 		EntryVec Entries;
 		EntryVec CommittedEntries;
 		bool MustSync;
@@ -282,12 +282,12 @@ BOOST_AUTO_TEST_CASE(TestRawNodeRestart) {
 	st.set_commit(1);
 
 	struct {
-		boost::optional<HardState> HardState;
+		boost::optional<raftpb::HardState> HardState;
 		EntryVec Entries;
 		EntrySlice<EntryVec> CommittedEntries;
 		bool MustSync;
 	} want[] = { {
-		boost::optional<HardState>(),
+		boost::optional<raftpb::HardState>(),
 		{},
 		// commit up to commit index in st
 		make_slice(entries, 0, st.commit()),
@@ -321,12 +321,12 @@ BOOST_AUTO_TEST_CASE(TestRawNodeRestartFromSnapshot) {
 	st.set_commit(3);
 
 	struct {
-		boost::optional<HardState> HardState;
+		boost::optional<raftpb::HardState> HardState;
 		EntryVec Entries;
 		EntryVec CommittedEntries;
 		bool MustSync;
 	} want[] = { {
-		boost::optional<HardState>(),
+		boost::optional<raftpb::HardState>(),
 		{},
 		// commit up to commit index in st
 		entries,

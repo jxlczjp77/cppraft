@@ -24,8 +24,8 @@ SnapshotPtr makeSnapshot(uint64_t index, uint64_t term) {
 	return sh;
 }
 
-unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, Logger &logger) {
-	unstable u;
+Unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, Logger &logger) {
+    Unstable u;
 	u.snapshot = std::move(snapshot);
 	u.entries.insert(u.entries.begin(), entries.begin(), entries.end());
 	u.offset = offset;

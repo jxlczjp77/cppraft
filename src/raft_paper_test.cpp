@@ -2,7 +2,7 @@
 #include "test_common.hpp"
 using namespace raft;
 using namespace raftpb;
-#define DISABLE_PAPER_TEST
+// #define DISABLE_PAPER_TEST
 
 class DiscardLogger : public Logger {
 public:
@@ -67,11 +67,11 @@ BOOST_AUTO_TEST_CASE(TestLeaderBcastBeat) {
 	auto r = newTestRaft(1, { 1, 2, 3 }, 10, hi, std::make_shared<MemoryStorage>());
 	r->becomeCandidate();
 	r->becomeLeader();
-	for (size_t i = 0; i < 10; i++) {
+	for (int i = 0; i < 10; i++) {
 		mustAppendEntry(r.get(), { makeEntry(i + 1, 0) });
 	}
 
-	for (size_t i = 0; i < hi; i++) {
+	for (int i = 0; i < hi; i++) {
 		r->tick();
 	}
 
@@ -711,7 +711,7 @@ void testNonleaderStartElection(StateType state) {
 		break;
 	}
 
-	for (size_t i = 1; i < 2*et; i++) {
+	for (int i = 1; i < 2*et; i++) {
 		r->tick();
 	}
 
@@ -746,7 +746,7 @@ void testNonleaderElectionTimeoutRandomized(StateType state) {
 	int et = 10;
 	auto r = newTestRaft(1, { 1, 2, 3 }, et, 1, std::make_shared<MemoryStorage>(), &discardLogger);
 	map<int, bool> timeouts;
-	for (size_t round = 0; round < 50*et; round++) {
+	for (int round = 0; round < 50*et; round++) {
 		switch (state) {
 		case StateFollower:
 			r->becomeFollower(r->Term + 1, 2);

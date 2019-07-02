@@ -1,5 +1,7 @@
 ﻿#include "lutils.hpp"
+#include <stdint.h>
 #include <vector>
+#include <string>
 using namespace std;
 
 void Xet_add(lua_State *L, Xet_reg l) {

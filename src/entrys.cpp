@@ -6,7 +6,7 @@ namespace raft {
 	}
 
 	EntryRange::EntryRange(EntryRange &&r)
-		: unstable(std::move(r.unstable)), storage(std::move(r.storage)) {
+		: storage(std::move(r.storage)), unstable(std::move(r.unstable)) {
 	}
 
 	EntryRange &EntryRange::operator= (EntryRange &&r) {

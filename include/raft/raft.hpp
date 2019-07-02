@@ -105,11 +105,11 @@ namespace raft {
 		// should (clock can move backward/pause without any bound). ReadIndex is not safe
 		// in that case.
 		// CheckQuorum MUST be enabled if ReadOnlyOption is ReadOnlyLeaseBased.
-		ReadOnlyOption ReadOnlyOption;
+		raft::ReadOnlyOption ReadOnlyOption;
 
 		// Logger is the logger used for raft log. For multinode which can host
 		// multiple raft group, each raft group can have its own logger
-		Logger *Logger;
+		raft::Logger *Logger;
 
 		// DisableProposalForwarding set to true means that followers will drop
 		// proposals, rather than forwarding them to the leader. One use case for
@@ -235,14 +235,16 @@ namespace raft {
 		void bcastHeartbeat();
 		void bcastHeartbeatWithCtx(const string &ctx);
 		bool checkQuorumActive();
-		template<class EntryContainer> bool appendEntry(EntryContainer &ents) {
-			return appendEntry((IEntrySlice &)make_slice(ents));
-		}
+		bool appendEntry(IEntrySlice &ents);
 		bool appendEntry(Entry &ent) {
 			std::array<Entry, 1> s = { std::move(ent) };
-			return appendEntry((IEntrySlice &)make_slice(s));
+			auto slice = make_slice(s);
+			return appendEntry((IEntrySlice &)slice);
 		}
-		bool appendEntry(IEntrySlice &ents);
+		template<class EntryContainer> bool appendEntry(EntryContainer &ents) {
+			auto slice = make_slice(ents);
+			return appendEntry((IEntrySlice &)slice);
+		}
 		void sendAppend(uint64_t to);
 		Progress *getProgress(uint64_t id);
 		bool maybeCommit();
