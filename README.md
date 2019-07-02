@@ -1,6 +1,6 @@
 c++版仅需要链接 raft.lib 即可。
 
-lraft 库导出 rawnode 及相关接口，并实现了 LDBStorage 用于在 lua 层实现 raft 的 storage，默认提供了一个 ldbstorage.lua 实现，依赖 lualeveldb（https://github.com/jxlczjp77/lua_leveldb.git） 库。
+lraft 库导出 rawnode 及相关接口，并实现了 LDBStorage 用于在 lua 层实现 raft 的 storage，默认提供了一个 ldbstorage.lua 实现，依赖 lualeveldb[https://github.com/jxlczjp77/lua_leveldb.git] 库。
 
 ## Build
 
