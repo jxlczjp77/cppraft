@@ -556,9 +556,26 @@ int lmessage_entry(lua_State *L) {
     return 1;
 }
 
+int lmessage_parser(lua_State *L) {
+    Message *msg = (Message *)luaL_checkudata(L, 1, MT_MESSAGE);
+    size_t len = 0;
+    const char *p = luaL_checklstring(L, 2, &len);
+    lua_pushboolean(L, msg->ParseFromArray(p, (int)len));
+    return 1;
+}
+
+int lmessage_serialize(lua_State *L) {
+    Message *msg = (Message *)luaL_checkudata(L, 1, MT_MESSAGE);
+    auto d = msg->SerializeAsString();
+    lua_pushlstring(L, d.c_str(), d.length());
+    return 1;
+}
+
 static const luaL_Reg message_m[] = {
     {"__gc", lmessage_delete},
     {"__array", lmessage_entry},
+    {"parser", lmessage_parser},
+    {"serialize", lmessage_serialize},
     {NULL, NULL}
 };
 

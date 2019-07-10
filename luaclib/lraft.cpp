@@ -102,6 +102,16 @@ static int lrawnode_step(lua_State *L) {
     return 1;
 }
 
+static int lrawnode_tick(lua_State *L) {
+    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    try {
+        node->Tick();
+    } catch (const std::exception &e) {
+        luaL_error(L, e.what());
+    }
+    return 0;
+}
+
 static int lrawnode_advance(lua_State *L) {
     RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     try {
@@ -261,6 +271,27 @@ static int lconfig_delete(lua_State *L) {
     return 0;
 }
 
+static int lpeer(lua_State *L) {
+    auto peer = (Peer *)lua_newuserdata(L, sizeof(Peer));
+    new (peer) Peer();
+    luaL_getmetatable(L, MT_PEER);
+    lua_setmetatable(L, -2);
+
+    if (lua_gettop(L) >= 1) {
+        peer->ID = luaL_checkinteger(L, 1);
+    }
+    if (lua_gettop(L) >= 2) {
+        peer->Context = luaL_checkstring(L, 2);
+    }
+    return 1;
+}
+
+static int lpeer_delete(lua_State *L) {
+    Peer *peer = (Peer *)luaL_checkudata(L, 1, MT_PEER);
+    peer->~Peer();
+    return 0;
+}
+
 //////////////////////////////////////////////////////////////////////////
 // memorystorage
 static int lmemorystorage(lua_State *L) {
@@ -411,6 +442,7 @@ static const luaL_Reg rawnode_m[] = {
     {"apply_confchange", lrawnode_apply_confchange},
     {"readindex", lrawnode_readindex},
     {"has_ready", lrawnode_has_ready},
+    {"tick", lrawnode_tick},
     {NULL, NULL}
 };
 
@@ -473,6 +505,7 @@ static const Xet_reg_pre config_getsets[] = {
 };
 
 static const luaL_Reg peer_m[] = {
+    {"__gc", lpeer_delete},
     {NULL, NULL}
 };
 
@@ -666,6 +699,7 @@ extern "C" {
             { "IsEmptyHardState", lIsEmptyHardState },
             { "readstate", lreadstate },
             { "default_logger", ldefault_log },
+            { "peer", lpeer },
             { NULL, NULL },
         };
         luaL_newlib(L, l);

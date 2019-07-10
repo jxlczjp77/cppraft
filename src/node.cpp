@@ -71,10 +71,12 @@ namespace raft {
 		if (n > 0) {
 			return CommittedEntries[n - 1].index();
 		}
-		size_t index = this->Snapshot->metadata().index();
-		if (index > 0) {
-			return index;
-		}
+        if (this->Snapshot) {
+            auto index = this->Snapshot->metadata().index();
+            if (index > 0) {
+                return index;
+            }
+        }
 		return 0;
 	}
 }
