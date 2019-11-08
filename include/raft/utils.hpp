@@ -41,12 +41,12 @@ namespace raft {
         numStates,
     };
 
-	bool isHardStateEqual(const HardState &a, const HardState &b);
-	bool IsEmptyHardState(const boost::optional<HardState> &st);
-	bool IsEmptySnap(const boost::optional<Snapshot> &sp);
-	void limitSize(IEntrySlice &ents, uint64_t maxSize);
-	size_t PayloadSize(const Entry &e);
-	bool IsLocalMsg(MessageType msgt);
-	bool IsResponseMsg(MessageType msgt);
-	MessageType voteRespMsgType(MessageType msgt);
+    bool isHardStateEqual(const HardState &a, const HardState &b);
+    bool IsEmptyHardState(const boost::optional<HardState> &st);
+    bool IsEmptySnap(const boost::optional<Snapshot> &sp);
+    void limitSize(IEntrySlice &ents, uint64_t maxSize);
+    size_t PayloadSize(const Entry &e);
+    bool IsLocalMsg(MessageType msgt);
+    bool IsResponseMsg(MessageType msgt);
+    MessageType voteRespMsgType(MessageType msgt);
 }

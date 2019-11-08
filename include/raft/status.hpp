@@ -4,8 +4,8 @@
 #include <raft/progress.hpp>
 
 namespace raft {
-	using namespace raftpb;
-	using namespace std;
+    using namespace raftpb;
+    using namespace std;
     class Raft;
 
     // SoftState provides state that is useful for logging and debugging.
@@ -23,20 +23,20 @@ namespace raft {
         }
     };
 
-	struct Status {
-		uint64_t ID;
+    struct Status {
+        uint64_t ID;
 
-		raftpb::HardState HardState;
-		raft::SoftState SoftState;
+        raftpb::HardState HardState;
+        raft::SoftState SoftState;
 
-		uint64_t Applied;
-		map<uint64_t, raft::Progress*> Progress;
+        uint64_t Applied;
+        map<uint64_t, raft::Progress*> Progress;
 
-		uint64_t LeadTransferee;
+        uint64_t LeadTransferee;
 
-		string ToJson();
-		string ToString();
-	};
+        string ToJson();
+        string ToString();
+    };
 
-	Status getStatus(Raft *r);
+    Status getStatus(Raft *r);
 }

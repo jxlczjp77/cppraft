@@ -11,52 +11,52 @@
 #pragma warning(disable: 4003)
 #endif
 namespace raft {
-	using namespace std;
-	namespace detail {
-		class LogContextImpl;
-	}
+    using namespace std;
+    namespace detail {
+        class LogContextImpl;
+    }
 
-	class LogLevel {
-	public:
-		enum values {
-			all,
-			debug,
-			info,
-			warn,
-			error,
-			fatal,
-			off
-		};
-		LogLevel(values v = off) :value(v) {}
-		explicit LogLevel(int v) :value(static_cast<values>(v)) {}
-		operator int()const { return value; }
-		string ToString()const;
-		values value;
-	};
+    class LogLevel {
+    public:
+        enum values {
+            all,
+            debug,
+            info,
+            warn,
+            error,
+            fatal,
+            off
+        };
+        LogLevel(values v = off) :value(v) {}
+        explicit LogLevel(int v) :value(static_cast<values>(v)) {}
+        operator int()const { return value; }
+        string ToString()const;
+        values value;
+    };
 
-	class LogContext : public boost::noncopyable {
-	public:
-		LogContext(LogLevel ll, const char* file, uint64_t line, const char* method);
-		~LogContext();
-		string        GetFile() const;
-		uint64_t      GetLineNumber() const;
-		string        GetMethod() const;
-		LogLevel      GetLogLevel() const;
-		string        ToString() const;
+    class LogContext : public boost::noncopyable {
+    public:
+        LogContext(LogLevel ll, const char* file, uint64_t line, const char* method);
+        ~LogContext();
+        string        GetFile() const;
+        uint64_t      GetLineNumber() const;
+        string        GetMethod() const;
+        LogLevel      GetLogLevel() const;
+        string        ToString() const;
 
-		std::unique_ptr<detail::LogContextImpl> impl;
-	};
+        std::unique_ptr<detail::LogContextImpl> impl;
+    };
 
-	class Logger {
-	protected:
-		LogLevel logLevel;
+    class Logger {
+    protected:
+        LogLevel logLevel;
 
-	public:
-		Logger() :logLevel(LogLevel::all) {}
-		virtual void log(const LogContext &ctx, const string &msg) = 0;
-		LogLevel setLogLevel(LogLevel lv) { auto o = logLevel; logLevel = lv; return o; }
-		LogLevel getLogLevel() { return logLevel; }
-	};
+    public:
+        Logger() :logLevel(LogLevel::all) {}
+        virtual void log(const LogContext &ctx, const string &msg) = 0;
+        LogLevel setLogLevel(LogLevel lv) { auto o = logLevel; logLevel = lv; return o; }
+        LogLevel getLogLevel() { return logLevel; }
+    };
 
 #define LOG_FORMAT_ARGS(r, unused, base) % (base)
 #define Log(l, level, fmt, ...) \
@@ -72,12 +72,12 @@ namespace raft {
 #define eLog(l, fmt, ...) Log(l, LogLevel::error, fmt, __VA_ARGS__)
 #define fLog(l, fmt, ...) Log(l, LogLevel::fatal, fmt, __VA_ARGS__)
 
-	class DefaultLogger : public Logger {
-	public:
-		static DefaultLogger &instance() {
-			static DefaultLogger _log;
-			return _log;
-		}
-		void log(const LogContext &ctx, const string &msg);
-	};
+    class DefaultLogger : public Logger {
+    public:
+        static DefaultLogger &instance() {
+            static DefaultLogger _log;
+            return _log;
+        }
+        void log(const LogContext &ctx, const string &msg);
+    };
 }
