@@ -49,7 +49,7 @@ namespace raft {
     LogContext::~LogContext() {
     }
 
-    string LogContext::GetFile() const {
+    const string &LogContext::GetFile() const {
         return impl->file;
     }
 
@@ -57,7 +57,7 @@ namespace raft {
         return impl->line;
     }
 
-    string LogContext::GetMethod() const {
+    const string &LogContext::GetMethod() const {
         return impl->method;
     }
 

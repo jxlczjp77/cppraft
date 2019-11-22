@@ -1,22 +1,55 @@
 ﻿#include <lua.hpp>
 #include <raft/rawnode.hpp>
+#include <sstream>
 #include "lutils.hpp"
 #include "lstorage.hpp"
 
 using namespace raft;
 
-class LRawNode : public RawNode {
+class LRawNode : public RawNode, public Logger {
 public:
-    LRawNode(lua_State *L): m_l(L), m_step_ref(0) {}
+    LRawNode(lua_State *L)
+        : m_l(L)
+        , m_step_ref(0)
+        , m_logger_ref(0)
+    {
+    }
     ~LRawNode() {
         if (m_step_ref > 0) {
             luaL_unref(m_l, LUA_REGISTRYINDEX, m_step_ref);
             m_step_ref = 0;
         }
+
+        if (m_logger_ref > 0) {
+            luaL_unref(m_l, LUA_REGISTRYINDEX, m_logger_ref);
+            m_logger_ref = 0;
+        }
+    }
+
+    virtual void log(const LogContext &ctx, const string &msg) {
+        if (m_logger_ref > 0) {
+            if (ctx.GetLogLevel() >= logLevel) {
+                std::ostringstream out;
+                out
+                    << "[" << ctx.GetLogLevel().ToString() << " " << ctx.ToString() << "] "
+                    << msg << std::endl;
+                auto str = out.str();
+                lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_logger_ref);
+                lua_pushlstring(m_l, str.c_str(), str.length());
+                if (lua_pcall(m_l, 1, 0, 0)) {
+                    std::string err = lua_tostring(m_l, -1);
+                    fLog(&DefaultLogger::instance(), err);
+                }
+            }
+            if (ctx.GetLogLevel() == LogLevel::fatal) {
+                BOOST_THROW_EXCEPTION(std::runtime_error(ctx.ToString() + msg));
+            }
+        }
     }
   
     lua_State *m_l;
     int m_step_ref;
+    int m_logger_ref;
 };
 
 static int lrawnode(lua_State *L) {
@@ -43,7 +76,7 @@ static int lreadstate(lua_State *L) {
 }
 
 static int lrawnode_init(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     Config *cfg = (Config *)luaL_checkudata(L, 2, MT_CONFIG);
     try {
         Config new_cfg = *cfg;
@@ -70,7 +103,7 @@ static int lrawnode_init(lua_State *L) {
 }
 
 static int lrawnode_ready(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     auto r = lua_newuserdata(L, sizeof(Ready));
     try {
         auto ready = node->Ready();
@@ -84,13 +117,13 @@ static int lrawnode_ready(lua_State *L) {
 }
 
 static int lrawnode_has_ready(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     lua_pushboolean(L, node->HasReady());
     return 1;
 }
 
 static int lrawnode_step(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     auto msg = (Message *)luaL_checkudata(L, 2, MT_MESSAGE);
     raft::ErrorCode err = OK;
     try {
@@ -103,7 +136,7 @@ static int lrawnode_step(lua_State *L) {
 }
 
 static int lrawnode_tick(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     try {
         node->Tick();
     } catch (const std::exception &e) {
@@ -113,7 +146,7 @@ static int lrawnode_tick(lua_State *L) {
 }
 
 static int lrawnode_advance(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     try {
         auto rd = (Ready *)luaL_checkudata(L, 2, MT_READY);
         node->Advance(*rd);
@@ -124,7 +157,7 @@ static int lrawnode_advance(lua_State *L) {
 }
 
 static int lrawnode_campaign(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     try {
         node->Campaign();
     } catch (const std::exception &e) {
@@ -134,7 +167,7 @@ static int lrawnode_campaign(lua_State *L) {
 }
 
 static int lrawnode_propose(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     raft::ErrorCode err = OK;
     try {
         err = node->Propose(luaL_checkstring(L, 2));
@@ -146,7 +179,7 @@ static int lrawnode_propose(lua_State *L) {
 }
 
 static int lrawnode_propose_confchange(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     auto r = (ConfChange *)luaL_checkudata(L, 2, MT_CONFCHANGE);
     raft::ErrorCode err = OK;
     try {
@@ -159,7 +192,7 @@ static int lrawnode_propose_confchange(lua_State *L) {
 }
 
 static int lrawnode_apply_confchange(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     auto r = (ConfChange *)luaL_checkudata(L, 2, MT_CONFCHANGE);
     try {
         node->ApplyConfChange(*r);
@@ -170,7 +203,7 @@ static int lrawnode_apply_confchange(lua_State *L) {
 }
 
 static int lrawnode_readindex(lua_State *L) {
-    RawNode *node = (RawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
     size_t l = 0;
     auto p = luaL_checklstring(L, 2, &l);
     try {
@@ -181,22 +214,42 @@ static int lrawnode_readindex(lua_State *L) {
     return 0;
 }
 
+static int lrawnode_setlogger(lua_State *L) {
+    LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
+    luaL_checktype(L, 1, LUA_TFUNCTION);
+    lua_pushvalue(L, 1);
+    if (node->m_logger_ref > 0) {
+        luaL_unref(L, LUA_REGISTRYINDEX, node->m_logger_ref);
+    }
+    node->m_logger_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    node->raft->logger = node;
+    return 0;
+}
+
 static int lrawnode_id(lua_State *L, void *v) {
-    RawNode *node = (RawNode *)v;
+    LRawNode *node = (LRawNode *)v;
     lua_pushinteger(L, node->raft->id);
     return 1;
 }
 
 static int lrawnode_uncommittedSize(lua_State *L, void *v) {
-    RawNode *node = (RawNode *)v;
+    LRawNode *node = (LRawNode *)v;
     lua_pushinteger(L, node->raft->uncommittedSize);
     return 1;
 }
 
 static int lrawnode_read_states(lua_State *L, void *v) {
-    RawNode *node = (RawNode *)v;
+    LRawNode *node = (LRawNode *)v;
     lua_pushlightuserdata(L, &node->raft->readStates);
     luaL_getmetatable(L, MT_READSTATEVEC);
+    lua_setmetatable(L, -2);
+    return 1;
+}
+
+static int lrawnode_logger(lua_State *L, void *v) {
+    LRawNode *node = (LRawNode *)v;
+    lua_pushlightuserdata(L, node->raft->logger);
+    luaL_getmetatable(L, MT_LOG);
     lua_setmetatable(L, -2);
     return 1;
 }
@@ -230,7 +283,7 @@ static int lrawnode_set_step(lua_State *L, void *v) {
 }
 
 static int lrawnode_set_read_states(lua_State *L, void *v) {
-    RawNode *node = (RawNode *)v;
+    LRawNode *node = (LRawNode *)v;
     if (lua_istable(L, 3)) {
         node->raft->readStates.clear();
         lua_pushnil(L);
@@ -281,7 +334,9 @@ static int lpeer(lua_State *L) {
         peer->ID = luaL_checkinteger(L, 1);
     }
     if (lua_gettop(L) >= 2) {
-        peer->Context = luaL_checkstring(L, 2);
+        size_t len = 0;
+        const char *pContext = luaL_checklstring(L, 2, &len);
+        peer->Context.assign(pContext, len);
     }
     return 1;
 }
@@ -443,6 +498,7 @@ static const luaL_Reg rawnode_m[] = {
     {"readindex", lrawnode_readindex},
     {"has_ready", lrawnode_has_ready},
     {"tick", lrawnode_tick},
+    {"setlogger", lrawnode_setlogger},
     {NULL, NULL}
 };
 
@@ -451,6 +507,7 @@ static const Xet_reg_pre rawnode_getsets[] = {
     {"uncommitted_size", lrawnode_uncommittedSize, nullptr, 0},
     {"read_states", lrawnode_read_states, lrawnode_set_read_states, 0},
     {"step_func", nullptr, lrawnode_set_step, 0},
+    {"logger", lrawnode_logger, nullptr, 0},
     {NULL}
 };
 

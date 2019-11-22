@@ -38,9 +38,9 @@ namespace raft {
     public:
         LogContext(LogLevel ll, const char* file, uint64_t line, const char* method);
         ~LogContext();
-        string        GetFile() const;
+        const string &GetFile() const;
         uint64_t      GetLineNumber() const;
-        string        GetMethod() const;
+        const string &GetMethod() const;
         LogLevel      GetLogLevel() const;
         string        ToString() const;
 

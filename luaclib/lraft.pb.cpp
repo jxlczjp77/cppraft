@@ -213,6 +213,12 @@ int lsnapshot_parser(lua_State *L) {
     return 1;
 }
 
+int lsnapshot_isempty(lua_State *L) {
+    Snapshot *e = (Snapshot *)luaL_checkudata(L, 1, MT_SNAPSHOT);
+    lua_pushboolean(L, e->metadata().index() == 0);
+    return 1;
+}
+
 int lsnapshot_serialize(lua_State *L) {
     Snapshot *e = (Snapshot *)luaL_checkudata(L, 1, MT_SNAPSHOT);
     auto d = e->SerializeAsString();
@@ -224,6 +230,7 @@ static const luaL_Reg snatshop_m[] = {
     {"__gc", lsnapshot_delete},
     {"serialize", lsnapshot_serialize},
     {"parser", lsnapshot_parser},
+    {"is_empty", lsnapshot_isempty},
     {NULL, NULL}
 };
 
@@ -708,7 +715,7 @@ static int lconfchange_delete(lua_State *L) {
 static int lconfchange_parser(lua_State *L) {
     ConfChange *cc = (ConfChange *)luaL_checkudata(L, 1, MT_CONFCHANGE);
     size_t l = 0;
-    auto p = luaL_checkstring(L, 2);
+    auto p = luaL_checklstring(L, 2, &l);
     lua_pushboolean(L, cc->ParsePartialFromArray(p, (int)l));
     return 1;
 }

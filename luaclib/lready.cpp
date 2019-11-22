@@ -97,9 +97,13 @@ int lready_delete(lua_State *L) {
 
 int lready_snapshot(lua_State *L, void *v) {
     Ready *r = (Ready *)v;
-    lua_pushlightuserdata(L, &r->Snapshot);
-    luaL_getmetatable(L, MT_SNAPSHOT);
-    lua_setmetatable(L, -2);
+    if (r->Snapshot) {
+        lua_pushlightuserdata(L, &r->Snapshot.value());
+        luaL_getmetatable(L, MT_SNAPSHOT);
+        lua_setmetatable(L, -2);
+    } else {
+        lua_pushnil(L);
+    }
     return 1;
 }
 
