@@ -103,6 +103,7 @@
     <ClInclude Include="..\include\raft\node.hpp" />
     <ClInclude Include="..\include\raft\progress.hpp" />
     <ClInclude Include="..\include\raft\raft.hpp" />
+    <ClInclude Include="..\include\raft\raft.pb.h" />
     <ClInclude Include="..\include\raft\raft_log.hpp" />
     <ClInclude Include="..\include\raft\rawnode.hpp" />
     <ClInclude Include="..\include\raft\read_only.hpp" />

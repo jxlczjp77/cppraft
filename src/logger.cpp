@@ -1,5 +1,4 @@
 ﻿#include <raft/logger.hpp>
-#include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/throw_exception.hpp>
 
@@ -41,7 +40,7 @@ namespace raft {
         const char* method
     ) : impl(new detail::LogContextImpl) {
         impl->level = level;
-        impl->file = boost::filesystem::path(file).generic_string();
+        impl->file = file;
         impl->line = line;
         impl->method = method;
     }

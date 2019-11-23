@@ -30,9 +30,7 @@ public:
         if (m_logger_ref > 0) {
             if (ctx.GetLogLevel() >= logLevel) {
                 std::ostringstream out;
-                out
-                    << "[" << ctx.GetLogLevel().ToString() << " " << ctx.ToString() << "] "
-                    << msg << std::endl;
+                out << "[" << ctx.GetLogLevel().ToString() << " " << ctx.ToString() << "] " << msg;
                 auto str = out.str();
                 lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_logger_ref);
                 lua_pushlstring(m_l, str.c_str(), str.length());
@@ -94,6 +92,9 @@ static int lrawnode_init(lua_State *L) {
                 }
                 lua_pop(L, 1);
             }
+        }
+        if (node->m_logger_ref != 0) {
+            new_cfg.Logger = node;
         }
         node->Init(std::move(new_cfg), peers);
     } catch (const std::exception &e) {
@@ -216,13 +217,15 @@ static int lrawnode_readindex(lua_State *L) {
 
 static int lrawnode_setlogger(lua_State *L) {
     LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
-    luaL_checktype(L, 1, LUA_TFUNCTION);
-    lua_pushvalue(L, 1);
+    luaL_checktype(L, 2, LUA_TFUNCTION);
+    lua_pushvalue(L, 2);
     if (node->m_logger_ref > 0) {
         luaL_unref(L, LUA_REGISTRYINDEX, node->m_logger_ref);
     }
     node->m_logger_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-    node->raft->logger = node;
+    if (node->raft) {
+        node->raft->logger = node;
+    }
     return 0;
 }
 

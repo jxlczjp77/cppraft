@@ -58,10 +58,20 @@ namespace raft {
         LogLevel getLogLevel() { return logLevel; }
     };
 
+    constexpr const char* file_name(const char* file) {
+        const char *last_p = nullptr;
+        for (const char *p = file; *p; ++p) {
+            if (*p == '/' || *p == '\\') {
+                last_p = p + 1;
+            }
+        }
+        return last_p ? last_p : file;
+    }
+
 #define LOG_FORMAT_ARGS(r, unused, base) % (base)
 #define Log(l, level, fmt, ...) \
 	(l)->log( \
-	LogContext(level, __FILE__, __LINE__, ""), \
+	LogContext(level, file_name(__FILE__), __LINE__, ""), \
 	(boost::format(fmt) BOOST_PP_IF(BOOST_VMD_IS_EMPTY(__VA_ARGS__), \
 		BOOST_PP_EMPTY(), \
 		BOOST_PP_SEQ_FOR_EACH(LOG_FORMAT_ARGS, v, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)))).str())
