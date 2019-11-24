@@ -235,6 +235,12 @@ static int lrawnode_id(lua_State *L, void *v) {
     return 1;
 }
 
+static int lrawnode_state(lua_State *L, void *v) {
+    LRawNode *node = (LRawNode *)v;
+    lua_pushinteger(L, node->raft->state);
+    return 1;
+}
+
 static int lrawnode_uncommittedSize(lua_State *L, void *v) {
     LRawNode *node = (LRawNode *)v;
     lua_pushinteger(L, node->raft->uncommittedSize);
@@ -507,6 +513,7 @@ static const luaL_Reg rawnode_m[] = {
 
 static const Xet_reg_pre rawnode_getsets[] = {
     {"id", lrawnode_id, nullptr, 0},
+    {"state", lrawnode_state, nullptr, 0},
     {"uncommitted_size", lrawnode_uncommittedSize, nullptr, 0},
     {"read_states", lrawnode_read_states, lrawnode_set_read_states, 0},
     {"step_func", nullptr, lrawnode_set_step, 0},
