@@ -93,7 +93,7 @@ namespace raft {
     Result<uint64_t> raft_log::term(uint64_t i) {
         uint64_t dummyIndex = firstIndex() - 1;
         if (i < dummyIndex || i > lastIndex()) {
-            return { 0 };
+            return { 0, ErrCompacted };
         }
         auto r = unstable.maybeTerm(i);
         if (r.Ok()) {

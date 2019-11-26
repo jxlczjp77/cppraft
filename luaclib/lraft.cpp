@@ -9,10 +9,12 @@ using namespace raft;
 class LRawNode : public RawNode, public Logger {
 public:
     LRawNode(lua_State *L)
-        : m_l(L)
-        , m_step_ref(0)
+        : m_step_ref(0)
         , m_logger_ref(0)
     {
+        lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
+        m_l = lua_tothread(L, -1);
+        lua_pop(L, 1);
     }
     ~LRawNode() {
         if (m_step_ref > 0) {
@@ -260,6 +262,30 @@ static int lrawnode_logger(lua_State *L, void *v) {
     lua_pushlightuserdata(L, node->raft->logger);
     luaL_getmetatable(L, MT_LOG);
     lua_setmetatable(L, -2);
+    return 1;
+}
+
+static int lrawnode_nodes(lua_State *L, void *v) {
+    LRawNode *node = (LRawNode *)v;
+    auto &prs = node->raft->prs;
+    lua_createtable(L, (int)prs.size(), 0);
+    int i = 1;
+    for (auto &pr: prs) {
+        lua_pushinteger(L, pr.first);
+        lua_rawseti(L, -2, i++);
+    }
+    return 1;
+}
+
+static int lrawnode_learners(lua_State *L, void *v) {
+    LRawNode *node = (LRawNode *)v;
+    auto &prs = node->raft->learnerPrs;
+    lua_createtable(L, (int)prs.size(), 0);
+    int i = 1;
+    for (auto &pr : prs) {
+        lua_pushinteger(L, pr.first);
+        lua_rawseti(L, -2, i++);
+    }
     return 1;
 }
 
@@ -518,6 +544,8 @@ static const Xet_reg_pre rawnode_getsets[] = {
     {"read_states", lrawnode_read_states, lrawnode_set_read_states, 0},
     {"step_func", nullptr, lrawnode_set_step, 0},
     {"logger", lrawnode_logger, nullptr, 0},
+    {"nodes", lrawnode_nodes, nullptr, 0},
+    {"learners", lrawnode_learners, nullptr, 0},
     {NULL}
 };
 
