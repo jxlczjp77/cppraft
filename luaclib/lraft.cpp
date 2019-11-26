@@ -474,7 +474,7 @@ static int lldbstorage(lua_State *L) {
     new (s) StoragePtr(new LDBStorage(L));
     luaL_getmetatable(L, MT_LDBSTORAGE);
     lua_setmetatable(L, -2);
-    ((LDBStorage *)s->get())->init(1);
+    ((LDBStorage *)s->get())->init(L, 1);
     return 1;
 }
 

@@ -17,7 +17,7 @@ public:
     LDBStorage(lua_State *L);
     ~LDBStorage();
 
-    void init(int idx);
+    void init(lua_State *L, int idx);
 
     virtual ErrorCode InitialState(HardState &hs, ConfState &cs);
     virtual Result<IEntrySlicePtr> Entries(uint64_t lo, uint64_t hi, uint64_t max_size);

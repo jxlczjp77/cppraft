@@ -2,17 +2,10 @@
 #include "lutils.hpp"
 #include <raft/logger.hpp>
 
-static int traceback(lua_State *L) {
-    const char *msg = lua_tostring(L, 1);
-    if (msg)
-        luaL_traceback(L, L, msg, 1);
-    else {
-        lua_pushliteral(L, "(no error message)");
-    }
-    return 1;
-}
-
-LDBStorage::LDBStorage(lua_State *L) : m_l(L) {
+LDBStorage::LDBStorage(lua_State *L) {
+    lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
+    m_l = lua_tothread(L, -1);
+    lua_pop(L, 1);
     memset(m_funcs, 0, sizeof(m_funcs));
 }
 
@@ -25,29 +18,29 @@ LDBStorage::~LDBStorage() {
     }
 }
 
-void LDBStorage::init(int idx) {
-    auto top = lua_gettop(m_l);
-    lua_pushvalue(m_l, idx);
-    m_ref = luaL_ref(m_l, LUA_REGISTRYINDEX);
-    if (lua_getfield(m_l, idx, "InitialState") != LUA_TNIL) {
-        m_funcs[FUNC_InitialState] = luaL_ref(m_l, LUA_REGISTRYINDEX);
+void LDBStorage::init(lua_State *L, int idx) {
+    auto top = lua_gettop(L);
+    lua_pushvalue(L, idx);
+    m_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    if (lua_getfield(L, idx, "InitialState") != LUA_TNIL) {
+        m_funcs[FUNC_InitialState] = luaL_ref(L, LUA_REGISTRYINDEX);
     }
-    if (lua_getfield(m_l, idx, "Entries") != LUA_TNIL) {
-        m_funcs[FUNC_Entries] = luaL_ref(m_l, LUA_REGISTRYINDEX);
+    if (lua_getfield(L, idx, "Entries") != LUA_TNIL) {
+        m_funcs[FUNC_Entries] = luaL_ref(L, LUA_REGISTRYINDEX);
     }
-    if (lua_getfield(m_l, idx, "Term") != LUA_TNIL) {
-        m_funcs[FUNC_Term] = luaL_ref(m_l, LUA_REGISTRYINDEX);
+    if (lua_getfield(L, idx, "Term") != LUA_TNIL) {
+        m_funcs[FUNC_Term] = luaL_ref(L, LUA_REGISTRYINDEX);
     }
-    if (lua_getfield(m_l, idx, "LastIndex") != LUA_TNIL) {
-        m_funcs[FUNC_LastIndex] = luaL_ref(m_l, LUA_REGISTRYINDEX);
+    if (lua_getfield(L, idx, "LastIndex") != LUA_TNIL) {
+        m_funcs[FUNC_LastIndex] = luaL_ref(L, LUA_REGISTRYINDEX);
     }
-    if (lua_getfield(m_l, idx, "FirstIndex") != LUA_TNIL) {
-        m_funcs[FUNC_FirstIndex] = luaL_ref(m_l, LUA_REGISTRYINDEX);
+    if (lua_getfield(L, idx, "FirstIndex") != LUA_TNIL) {
+        m_funcs[FUNC_FirstIndex] = luaL_ref(L, LUA_REGISTRYINDEX);
     }
-    if (lua_getfield(m_l, idx, "Snapshot") != LUA_TNIL) {
-        m_funcs[FUNC_Snapshot] = luaL_ref(m_l, LUA_REGISTRYINDEX);
+    if (lua_getfield(L, idx, "Snapshot") != LUA_TNIL) {
+        m_funcs[FUNC_Snapshot] = luaL_ref(L, LUA_REGISTRYINDEX);
     }
-    lua_settop(m_l, top);
+    lua_settop(L, top);
 }
 
 ErrorCode LDBStorage::InitialState(HardState &hs, ConfState &cs) {
@@ -55,10 +48,9 @@ ErrorCode LDBStorage::InitialState(HardState &hs, ConfState &cs) {
         fLog(&DefaultLogger::instance(), "InitialState not impl");
     }
     auto top = lua_gettop(m_l);
-    lua_pushcfunction(m_l, traceback);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_funcs[FUNC_InitialState]);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_ref);
-    if (lua_pcall(m_l, 1, 2, top + 1)) {
+    if (lua_pcall(m_l, 1, 2, 0)) {
         std::string err = lua_tostring(m_l, -1);
         lua_settop(m_l, top);
         fLog(&DefaultLogger::instance(), err);
@@ -76,13 +68,12 @@ Result<IEntrySlicePtr> LDBStorage::Entries(uint64_t lo, uint64_t hi, uint64_t ma
         fLog(&DefaultLogger::instance(), "Entries not impl");
     }
     auto top = lua_gettop(m_l);
-    lua_pushcfunction(m_l, traceback);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_funcs[FUNC_Entries]);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_ref);
     lua_pushinteger(m_l, lo);
     lua_pushinteger(m_l, hi);
     lua_pushinteger(m_l, max_size);
-    if (lua_pcall(m_l, 4, 2, top + 1)) {
+    if (lua_pcall(m_l, 4, 2, 0)) {
         std::string err = lua_tostring(m_l, -1);
         lua_settop(m_l, top);
         fLog(&DefaultLogger::instance(), err);
@@ -106,11 +97,10 @@ Result<uint64_t> LDBStorage::Term(uint64_t i) {
         fLog(&DefaultLogger::instance(), "Term not impl");
     }
     auto top = lua_gettop(m_l);
-    lua_pushcfunction(m_l, traceback);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_funcs[FUNC_Term]);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_ref);
     lua_pushinteger(m_l, i);
-    if (lua_pcall(m_l, 2, 2, top + 1)) {
+    if (lua_pcall(m_l, 2, 2, 0)) {
         std::string err = lua_tostring(m_l, -1);
         lua_settop(m_l, top);
         fLog(&DefaultLogger::instance(), err);
@@ -126,10 +116,9 @@ Result<uint64_t> LDBStorage::LastIndex() {
         fLog(&DefaultLogger::instance(), "LastIndex not impl");
     }
     auto top = lua_gettop(m_l);
-    lua_pushcfunction(m_l, traceback);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_funcs[FUNC_LastIndex]);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_ref);
-    if (lua_pcall(m_l, 1, 2, top + 1)) {
+    if (lua_pcall(m_l, 1, 2, 0)) {
         std::string err = lua_tostring(m_l, -1);
         lua_settop(m_l, top);
         fLog(&DefaultLogger::instance(), err);
@@ -145,10 +134,9 @@ Result<uint64_t> LDBStorage::FirstIndex() {
         fLog(&DefaultLogger::instance(), "FirstIndex not impl");
     }
     auto top = lua_gettop(m_l);
-    lua_pushcfunction(m_l, traceback);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_funcs[FUNC_FirstIndex]);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_ref);
-    if (lua_pcall(m_l, 1, 2, top + 1)) {
+    if (lua_pcall(m_l, 1, 2, 0)) {
         std::string err = lua_tostring(m_l, -1);
         lua_settop(m_l, top);
         fLog(&DefaultLogger::instance(), err);
@@ -164,10 +152,9 @@ Result<raftpb::Snapshot*> LDBStorage::Snapshot() {
         fLog(&DefaultLogger::instance(), "Snapshot not impl");
     }
     auto top = lua_gettop(m_l);
-    lua_pushcfunction(m_l, traceback);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_funcs[FUNC_Snapshot]);
     lua_rawgeti(m_l, LUA_REGISTRYINDEX, m_ref);
-    if (lua_pcall(m_l, 1, 1, top + 1)) {
+    if (lua_pcall(m_l, 1, 1, 0)) {
         std::string err = lua_tostring(m_l, -1);
         lua_settop(m_l, top);
         fLog(&DefaultLogger::instance(), err);
