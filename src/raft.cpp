@@ -937,7 +937,7 @@ namespace raft {
         uncommittedSize = 0;
         readOnly.reset(new ReadOnly(readOnly->option));
     }
-    boost::mt19937 gen;
+    boost::mt19937 gen((uint32_t)time(0));
     void Raft::resetRandomizedElectionTimeout() {
         boost::random::uniform_int_distribution<> dist(0, electionTimeout - 1);
         randomizedElectionTimeout = electionTimeout + dist(gen);
