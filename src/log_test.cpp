@@ -493,17 +493,18 @@ BOOST_AUTO_TEST_CASE(TestTerm) {
     struct {
         uint64_t index;
         uint64_t w;
+        ErrorCode err;
     } tests[] = {
-        {offset - 1, 0},
-        {offset, 1},
-        {offset + num / 2, num / 2},
-        {offset + num - 1, num - 1},
-        {offset + num, 0},
+        {offset - 1, 0, ErrCompacted},
+        {offset, 1, OK},
+        {offset + num / 2, num / 2, OK},
+        {offset + num - 1, num - 1, OK},
+        {offset + num, 0, ErrCompacted},
     };
     for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
         auto &tt = tests[i];
         auto t = l.term(tt.index);
-        auto w = mustTerm(t);
+        auto w = mustTerm(t, tt.err);
         BOOST_REQUIRE_EQUAL(tt.w, w);
     }
 }
@@ -519,19 +520,20 @@ BOOST_AUTO_TEST_CASE(TestTermWithUnstableSnapshot) {
     struct {
         uint64_t index;
         uint64_t w;
+        ErrorCode err;
     } tests[] = {
         // cannot get term from storage
-        {storagesnapi, 0},
+        {storagesnapi, 0, ErrCompacted},
         // cannot get term from the gap between storage ents and unstable snapshot
-        {storagesnapi + 1, 0},
-        {unstablesnapi - 1, 0},
+        {storagesnapi + 1, 0, ErrCompacted},
+        {unstablesnapi - 1, 0, ErrCompacted},
         // get term from unstable snapshot index
-        {unstablesnapi, 1},
+        {unstablesnapi, 1, OK},
     };
     for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
         auto &tt = tests[i];
         auto t = l.term(tt.index);
-        auto w = mustTerm(t);
+        auto w = mustTerm(t, tt.err);
         BOOST_REQUIRE_EQUAL(tt.w, w);
     }
 }

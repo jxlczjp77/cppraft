@@ -31,7 +31,7 @@ void euqal_vec(const Vec1 &left, const Vec2 &right, const std::function<void(con
 Unstable make_unstable(unique_ptr<Snapshot> &&snapshot, vector<Entry> &&entries, uint64_t offset, Logger &logger);
 string ltoa(raft_log *l);
 string diffu(const string &a, const string &b);
-uint64_t mustTerm(const Result<uint64_t> &term);
+uint64_t mustTerm(const Result<uint64_t> &term, ErrorCode err = OK);
 vector<uint64_t> idsBySize(size_t size);
 
 struct stateMachine {

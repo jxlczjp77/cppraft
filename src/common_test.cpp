@@ -79,8 +79,8 @@ string diffu(const string &a, const string &b) {
     return "diff: \n" + a + "\n" + b + "\n";
 }
 
-uint64_t mustTerm(const Result<uint64_t> &term) {
-    if (!term.Ok()) {
+uint64_t mustTerm(const Result<uint64_t> &term, ErrorCode err) {
+    if (term.err != err) {
         abort();
     }
     return term.value;
