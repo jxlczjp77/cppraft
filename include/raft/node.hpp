@@ -59,10 +59,10 @@ namespace raft
         // written to disk or if an asynchronous write is permissible.
         bool MustSync;
 
+        Ready() {}
         Ready(Raft *r, const raft::SoftState &prevSoftSt, const raft::HardState &prevHardSt);
-        Ready(Ready &&v);
 
-        Ready &operator= (const Ready &v);
+        void init(Raft *r, const raft::SoftState &prevSoftSt, const raft::HardState &prevHardSt);
 
         bool containsUpdates();
         uint64_t appliedCursor();

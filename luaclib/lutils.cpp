@@ -149,3 +149,20 @@ void init_metatable(lua_State *L, const char *metatable_name, const luaL_Reg met
 
     lua_pop(L, 1);
 }
+
+void add_metafunc(lua_State *L, const char *metatable_name, const std::function<void(lua_State *L)> &f) {
+    int top = lua_gettop(L);
+    luaL_getmetatable(L, MT_RAWNODE);
+    lua_pushstring(L, "__index");
+    lua_rawget(L, -2);
+    if (lua_iscfunction(L, -1)) {
+        lua_getupvalue(L, -1, 1);
+        f(L);
+        lua_pop(L, 3);
+    } else {
+        f(L);
+        lua_pop(L, 2);
+    }
+    int top2 = lua_gettop(L);
+}
+

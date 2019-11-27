@@ -12,49 +12,37 @@ namespace raft {
         return entsnum != 0 || st.vote() != prevst.vote() || st.term() != prevst.term();
     }
 
-    Ready::Ready(Raft *r, const raft::SoftState &prevSoftSt, const raft::HardState &prevHardSt)
-        : Entries(r->raftLog->unstableEntries())
-        , CommittedEntries(r->raftLog->nextEnts())
-        , Messages(std::move(r->msgs)) {
+    Ready::Ready(Raft *r, const raft::SoftState &prevSoftSt, const raft::HardState &prevHardSt) {
+        init(r, prevSoftSt, prevHardSt);
+    }
+
+    void Ready::init(Raft *r, const raft::SoftState &prevSoftSt, const raft::HardState &prevHardSt) {
+        Entries = r->raftLog->unstableEntries();
+        CommittedEntries = r->raftLog->nextEnts();
+        Messages = std::move(r->msgs);
         auto softSt = r->softState();
         if (softSt != prevSoftSt) {
             this->SoftState = softSt;
+        } else {
+            this->SoftState.reset();
         }
         auto hardSt = r->hardState();
         if (!isHardStateEqual(hardSt, prevHardSt)) {
             this->HardState = hardSt;
+        } else {
+            this->HardState.reset();
         }
 
         if (r->raftLog->unstable.snapshot) {
             this->Snapshot = *r->raftLog->unstable.snapshot;
+        } else {
+            this->Snapshot.reset();
         }
+
         if (!r->readStates.empty()) {
             this->ReadStates = r->readStates;
         }
         this->MustSync = MustSync_(hardSt, prevHardSt, Entries.size());
-    }
-
-    Ready::Ready(Ready &&v)
-        : SoftState(std::move(v.SoftState))
-        , HardState(std::move(v.HardState))
-        , ReadStates(std::move(v.ReadStates))
-        , Entries(std::move(v.Entries))
-        , Snapshot(std::move(v.Snapshot))
-        , CommittedEntries(std::move(v.CommittedEntries))
-        , Messages(std::move(v.Messages))
-        , MustSync(v.MustSync) {
-    }
-
-    Ready &Ready::operator= (const Ready &v) {
-        SoftState = std::move(const_cast<raft::Ready&>(v).SoftState);
-        HardState = std::move(const_cast<raft::Ready&>(v).HardState);
-        ReadStates = std::move(const_cast<raft::Ready&>(v).ReadStates);
-        Entries = std::move(const_cast<raft::Ready&>(v).Entries);
-        Snapshot = std::move(const_cast<raft::Ready&>(v).Snapshot);
-        CommittedEntries = std::move(const_cast<raft::Ready&>(v).CommittedEntries);
-        Messages = std::move(const_cast<raft::Ready&>(v).Messages);
-        MustSync = v.MustSync;
-        return *this;
     }
 
     bool Ready::containsUpdates() {

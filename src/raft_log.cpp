@@ -279,7 +279,7 @@ namespace raft {
     }
 
     void raft_log::restore(const Snapshot &s) {
-        iLog(logger, "log [%1%] starts to restore snapshot [index: %2%, term: %3%]", to_string().c_str(), s.metadata().index(), s.metadata().index());
+        iLog(logger, "log [%1%] starts to restore snapshot [index: %2%, term: %3%]", to_string().c_str(), s.metadata().index(), s.metadata().term());
         committed = s.metadata().index();
         unstable.restore(s);
     }

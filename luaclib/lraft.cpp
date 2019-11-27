@@ -107,15 +107,13 @@ static int lrawnode_init(lua_State *L) {
 
 static int lrawnode_ready(lua_State *L) {
     LRawNode *node = (LRawNode *)luaL_checkudata(L, 1, MT_RAWNODE);
-    auto r = lua_newuserdata(L, sizeof(Ready));
+    Ready *rd = (Ready *)lua_touserdata(L, lua_upvalueindex(1));
     try {
-        auto ready = node->Ready();
-        new (r) Ready(std::move(ready));
+        node->Ready(*rd);
     } catch (const std::exception &e) {
         luaL_error(L, e.what());
     }
-    luaL_getmetatable(L, MT_READY);
-    lua_setmetatable(L, -2);
+    lua_pushvalue(L, lua_upvalueindex(1));
     return 1;
 }
 
@@ -523,7 +521,6 @@ static int lIsEmptyHardState(lua_State *L) {
 static const luaL_Reg rawnode_m[] = {
     {"__gc", lrawnode_delete},
     {"init", lrawnode_init},
-    {"ready", lrawnode_ready},
     {"step", lrawnode_step},
     {"advance", lrawnode_advance},
     {"campaign", lrawnode_campaign},
@@ -809,6 +806,15 @@ extern "C" {
         regist_pb_class(L);
         regist_ready_class(L);
         regist_uint64(L);
+
+        add_metafunc(L, MT_RAWNODE, [](lua_State *L) {
+            auto r = lua_newuserdata(L, sizeof(Ready));
+            new(r) Ready();
+            luaL_getmetatable(L, MT_READY);
+            lua_setmetatable(L, -2);
+            lua_pushcclosure(L, lrawnode_ready, 1);
+            lua_setfield(L, -2, "ready");
+            });
 
         REG_ENUM(L, StateFollower);
         REG_ENUM(L, StateCandidate);

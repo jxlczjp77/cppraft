@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <lua.hpp>
+#include <functional>
 
 #define MT_RAWNODE             "raft_rawnode"
 #define MT_CONFIG              "raft_config"
@@ -64,3 +65,4 @@ int get_string(lua_State *L, void *v);
 int set_string(lua_State *L, void *v);
 
 void init_metatable(lua_State *L, const char *metatable_name, const luaL_Reg methods[], const Xet_reg_pre getsets[] = NULL);
+void add_metafunc(lua_State *L, const char *metatable_name, const std::function<void(lua_State *L)> &f);

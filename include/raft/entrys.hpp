@@ -78,6 +78,7 @@ namespace raft {
         size_t start;
         size_t count;
         const Container *container;
+        EntrySlice() { container = nullptr; start = 0; count = 0; }
         EntrySlice(const Container &c) : EntrySlice(c, 0, 0) {}
         EntrySlice(const Container &c, size_t start_, size_t end_) : container(&c) {
             start = start_;

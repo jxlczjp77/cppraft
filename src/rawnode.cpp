@@ -168,7 +168,12 @@ namespace raft {
     raft::Ready RawNode::Ready() {
         raft::Ready rd(this->raft.get(), prevSoftSt, prevHardSt);
         raft->reduceUncommittedSize(rd.CommittedEntries);
-        return rd;
+        return std::move(rd);
+    }
+
+    void RawNode::Ready(raft::Ready &rd) {
+        rd.init(this->raft.get(), prevSoftSt, prevHardSt);
+        raft->reduceUncommittedSize(rd.CommittedEntries);
     }
 
     // HasReady called when RawNode user need to check if any Ready pending.

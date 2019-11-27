@@ -22,6 +22,7 @@ namespace raft {
         ConfState ApplyConfChange(const ConfChange &cc);
         ErrorCode Step(Message &m);
         raft::Ready Ready();
+        void Ready(raft::Ready &rd);
         bool HasReady();
         void Advance(raft::Ready &rd);
         raft::Status Status();
