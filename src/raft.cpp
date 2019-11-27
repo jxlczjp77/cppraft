@@ -649,7 +649,6 @@ namespace raft {
             msg.set_from(id);
             msg.set_type(MsgHup);
             Step(msg);
-            resetRandomizedElectionTimeout();
         }
     }
 
@@ -939,8 +938,8 @@ namespace raft {
         readOnly.reset(new ReadOnly(readOnly->option));
     }
 
+    boost::mt19937 gen((uint32_t)time(0));
     void Raft::resetRandomizedElectionTimeout() {
-        boost::mt19937 gen((uint32_t)time(0));
         boost::random::uniform_int_distribution<> dist(0, electionTimeout - 1);
         randomizedElectionTimeout = electionTimeout + dist(gen);
     }
