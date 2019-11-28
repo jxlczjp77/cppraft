@@ -2,7 +2,6 @@
 local raft = require "lraft"
 local raftpb = raft.pb
 local uint64 = raft.uint64
-local concat = table.concat
 local insert = table.insert
 local ErrOK = raft.OK
 local ErrCompacted = raft.ErrCompacted
@@ -110,6 +109,8 @@ function ldbstorage:firstIndex() return self.offset + 1 end
 
 function ldbstorage:lastIndex() return self.offset + self.count - 1 end
 
+function ldbstorage:empty() return self.offset == 0 and self.count == 1 end
+
 function ldbstorage:remove(s, e)
     local i = uint64(s)
     while i < e do
@@ -122,19 +123,23 @@ function ldbstorage:flush() self.ldb:write(self.batch) end
 
 function ldbstorage:getEntry(i)
     local data = self.batch:get(make_key(i))
-    assert(data)
+    assert(data, string.format("getEntry(%d) failed", i))
     local ent = raftpb.entry()
     assert(ent:parser(data))
     return ent
 end
 
-function ldbstorage:range(lo, hi)
-    if uint64(lo) < self.offset then
-        lo = self.offset
-    elseif uint64(hi) > self:lastIndex() + 1 then
-        hi = self:lastIndex() + 1
+function ldbstorage:range(lo, hi, cb)
+    if uint64(lo) < self.offset then lo = self.offset end
+    if uint64(hi) > self:lastIndex() + 1 then hi = self:lastIndex() + 1 end
+    if cb then
+        local i = uint64(lo)
+        while i < hi do
+            cb(self:getEntry(#i))
+            i = uint64(i) + 1
+        end
+        return
     end
-
     local ents = {}
     local i = uint64(lo)
     while i < hi do
@@ -168,8 +173,11 @@ end
 -- the result of the last ApplyConfChange must be passed in.
 function ldbstorage:create_snapshot(i, cs, data)
     local pre_snap_idx = self.snap.metadata.index
-    if uint64(i) <= pre_snap_idx then return ErrSnapOutOfDate end
-
+    if uint64(i) <= pre_snap_idx then
+        return ErrSnapOutOfDate,
+               string.format("snapshot %s <= pre snapshot index %s",
+                             uint64(i), uint64(pre_snap_idx))
+    end
     if uint64(i) > self:lastIndex() then
         error(string.format("snapshot %s is out of bound lastindex(%s)",
                             uint64(i), uint64(self:lastIndex())))
@@ -181,34 +189,51 @@ function ldbstorage:create_snapshot(i, cs, data)
     meta.term = self:getEntry(i).term
     if cs then
         local conf_state = meta.conf_state
-        conf_state.nodes = cs
+        conf_state.nodes = cs.nodes
+        conf_state.learners = cs.learners
     end
     snap.data = data
     return ErrOK, snap
 end
 
 function ldbstorage:apply_snapshot(sn)
+    local data = sn:serialize()
+    local meta = sn.metadata
+    local new_index = meta.index
+    local new_term = meta.term
     local old_index = self.snap.metadata.index
-    local new_index = sn.metadata.index
     if uint64(new_index) < old_index then return ErrSnapOutOfDate end
-    self.snap = sn
-    self:remove(self.offset, self.offset + self.count)
-    local dumy_entry = raftpb.entry(new_index, sn.metadata.term)
+    if not self:empty() then
+        local remove_count = new_index - self.offset
+        self:remove(self.offset, new_index)
+        self.count = self.count - remove_count
+    end
+    local dumy_entry = raftpb.entry(new_index, new_term)
     self.offset = new_index
-    self.count = 1
+    assert(self.count >= 1)
+    self.snap:parser(data)
     self.batch:put(make_key(new_index), dumy_entry:serialize())
     self.batch:put(KEY_COUNT, tostring(self.count))
     self.batch:put(KEY_OFFSET, tostring(self.offset))
-    self.batch:put(KEY_SNAPSHOT, sn:serialize())
-    self:flush()
+    self.batch:put(KEY_SNAPSHOT, data)
     return ErrOK
 end
 
 function ldbstorage:set_hardstate(st)
-    self.batch:put(KEY_HARD_STATE, st:serialize())
-    self:flush()
-    self.hardstate = st
+    if st then
+        self.batch:put(KEY_HARD_STATE, st:serialize())
+        self.hardstate = st
+    end
     return ErrOK
+end
+
+function ldbstorage:range_entry_data(cb)
+    local i = uint64(0)
+    local hi = self:lastIndex() + 1
+    while i < hi do
+        cb(self.batch:get(make_key(#i)))
+        i = uint64(i) + 1
+    end
 end
 
 -----------------------------
