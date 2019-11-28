@@ -162,13 +162,17 @@ namespace raft {
         }
         becomeFollower(Term, None);
 
-        vector<string> nodesStrs;
+        vector<string> nodesStrs, nodesStrs1;
         for (auto n : nodes()) {
             nodesStrs.push_back((boost::format("%X") % n).str());
         }
+        for (auto n : learnerNodes()) {
+            nodesStrs1.push_back((boost::format("%X") % n).str());
+        }
         string nodesStr = boost::join(nodesStrs, ",");
-        iLog(logger, "newRaft %1% [peers: [%2%], term: %3%, commit: %4%, applied: %5%, lastindex: %6%, lastterm: %7%]",
-            id, nodesStr.c_str(), Term, raftLog->committed, raftLog->applied, raftLog->lastIndex(), raftLog->lastTerm());
+        string nodesStr1 = boost::join(nodesStrs1, ",");
+        iLog(logger, "newRaft %1% [peers: [%2%], learners: [%3%], term: %4%, commit: %5%, applied: %6%, lastindex: %7%, lastterm: %8%]",
+            id, nodesStr.c_str(), nodesStr1.c_str(), Term, raftLog->committed, raftLog->applied, raftLog->lastIndex(), raftLog->lastTerm());
     }
 
     void Raft::becomeFollower(uint64_t term, uint64_t lead) {
