@@ -245,4 +245,8 @@ namespace raft {
         msg.mutable_entries()->Add()->set_data(rctx);
         raft->Step(msg);
     }
+
+    bool RawNode::HasLeader() {
+        return raft->lead != None;
+    }
 }

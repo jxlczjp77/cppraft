@@ -30,5 +30,6 @@ namespace raft {
         void ReportSnapshot(uint64_t id, SnapshotStatus status);
         void TransferLeader(uint64_t transferee);
         void ReadIndex(const string &rctx);
+        bool HasLeader();
     };
 }
